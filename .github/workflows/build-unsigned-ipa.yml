@@ -1,0 +1,150 @@
+name: Build Unsigned iOS IPA (SideStore sideload)
+
+# Manual only -- this is Jan's own personal sideload pipeline for Nuvio
+# Mobile (upstream: https://github.com/NuvioMedia/NuvioMobile, GPL-3.0),
+# built from this fork rather than upstream so it doesn't need to touch
+# NuvioMedia's repo. SideStore signs the app itself with a free Apple ID at
+# install time, so this deliberately builds with code signing turned OFF,
+# using a real Xcode toolchain on a GitHub-hosted macOS runner.
+#
+# Distribution is forced to NUVIO_IOS_DISTRIBUTION=appstore (not "full"):
+# the "full" flavor requires a private sibling ../nuvio-engine XCFramework
+# that only the Nuvio maintainers have -- this fork can't build it.
+#
+# Also publishes a SideStore/AltStore "source" (source.json + the ipa + the
+# app icon) to a stable-URL GitHub Release, tag `ios-latest`, with its
+# assets overwritten on every run. Add that source.json's raw URL to
+# SideStore once (Browse tab -> paste URL -> Add Source) and every future
+# run of this workflow shows up there as a normal one-tap Update.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Init MPVKit submodule (local SPM package the Xcode project links against)
+        # Only MPVKit -- the repo also carries an unrelated stale gitlink
+        # (libass-android) with no matching .gitmodules entry, so a blanket
+        # `--recursive` init would fail on it.
+        run: git submodule update --init MPVKit
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve Swift Package dependencies (MPVKit + friends)
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp
+
+      - name: Archive (unsigned, real device build)
+        env:
+          NUVIO_IOS_DISTRIBUTION: appstore
+        run: |
+          xcodebuild archive \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -archivePath "$PWD/build/Nuvio.xcarchive" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_STYLE=Manual \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM=""
+
+      - name: Read app version + build + bundle id from the BUILT Info.plist
+        id: appmeta
+        # Read these straight out of the .app Xcode actually produced, never
+        # computed independently (e.g. from a run counter) -- otherwise
+        # source.json can drift from the real binary and SideStore refuses
+        # to install with a version/build mismatch error.
+        run: |
+          cd build/Nuvio.xcarchive/Products/Applications
+          APP=$(ls -d *.app | head -1)
+          PLIST="$APP/Info.plist"
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST")
+          echo "Built app actually reports: app=$APP version=$VERSION build=$BUILD bundle_id=$BUNDLE_ID"
+          echo "app_name=$APP" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "bundle_id=$BUNDLE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Package raw IPA (Payload/*.app zipped, no signing)
+        id: package
+        run: |
+          cd build/Nuvio.xcarchive/Products/Applications
+          APP=$(ls -d *.app | head -1)
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -r -y ../../../Nuvio.ipa Payload
+          SIZE=$(stat -f%z ../../../Nuvio.ipa)
+          echo "Built: $(ls -la ../../../Nuvio.ipa)"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Extract app icon
+        run: cp "iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/app-icon-1024.png" build/icon.png
+
+      - name: Generate SideStore/AltStore source.json
+        run: |
+          cat > build/source.json <<EOF
+          {
+            "name": "Jan's Nuvio builds",
+            "identifier": "nl.jdries.nuvio.source",
+            "apps": [
+              {
+                "name": "Nuvio",
+                "bundleIdentifier": "${{ steps.appmeta.outputs.bundle_id }}",
+                "developerName": "NuvioMedia (unofficial sideload build via janibert1)",
+                "localizedDescription": "Unofficial personal sideload build of Nuvio Mobile (open-source, GPL-3.0) -- auto-built from janibert1/NuvioMobile (fork of NuvioMedia/NuvioMobile).",
+                "iconURL": "https://github.com/${{ github.repository }}/releases/download/ios-latest/icon.png",
+                "versions": [
+                  {
+                    "version": "${{ steps.appmeta.outputs.version }}",
+                    "buildVersion": "${{ steps.appmeta.outputs.build }}",
+                    "date": "$(date -u +%Y-%m-%d)",
+                    "localizedDescription": "Build ${{ steps.appmeta.outputs.build }} (run #${{ github.run_number }}) from commit ${{ github.sha }}",
+                    "downloadURL": "https://github.com/${{ github.repository }}/releases/download/ios-latest/Nuvio.ipa",
+                    "size": ${{ steps.package.outputs.size }}
+                  }
+                ],
+                "appPermissions": { "entitlements": [], "privacy": {} }
+              }
+            ],
+            "news": []
+          }
+          EOF
+          cat build/source.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nuvio-unsigned-ipa
+          path: build/Nuvio.ipa
+          retention-days: 14
+
+      - name: Publish to stable-URL release (assets overwritten each run)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          name: "iOS build (auto-updated, latest run wins)"
+          body: "Personal unofficial sideload build of Nuvio Mobile for SideStore, built from janibert1/NuvioMobile (a fork of NuvioMedia/NuvioMobile, GPL-3.0). Not a real release -- assets here are overwritten on every workflow run. Add source.json's URL as a SideStore source to get one-tap updates."
+          prerelease: true
+          files: |
+            build/Nuvio.ipa
+            build/source.json
+            build/icon.png
