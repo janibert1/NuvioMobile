@@ -188,14 +188,7 @@ jobs:
           APP=$(ls -d *.app | head -1)
           EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
           echo "--- searching compiled binary for api.nuvio.tv (UTF-8 and UTF-16, both byte orders) ---"
-          FOUND=$(/usr/bin/python3 -c "
-needle = 'api.nuvio.tv'
-with open('$APP/$EXEC', 'rb') as f:
-    data = f.read()
-encodings = ['utf-8', 'utf-16-le', 'utf-16-be']
-hits = [enc for enc in encodings if needle.encode(enc) in data]
-print(','.join(hits) if hits else '')
-")
+          FOUND=$(/usr/bin/python3 -c "data = open('$APP/$EXEC', 'rb').read(); needle = 'api.nuvio.tv'; hits = [e for e in ('utf-8', 'utf-16-le', 'utf-16-be') if needle.encode(e) in data]; print(','.join(hits))")
           if [ -z "$FOUND" ]; then
             echo "::error::api.nuvio.tv not found in the built executable under any encoding (utf-8, utf-16-le, utf-16-be) -- local.properties' NUVIO_SUPABASE_URL likely didn't make it into this build. The app would ship unable to reach any backend."
             exit 1
