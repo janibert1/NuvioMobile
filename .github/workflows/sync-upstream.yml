@@ -1,0 +1,81 @@
+name: Sync upstream + rebuild
+
+# Keeps this fork from going stale. Daily, and on demand:
+#   1. Fetch NuvioMedia/NuvioMobile's cmp-rewrite branch.
+#   2. Bring it into this fork's cmp-rewrite -- fast-forward if this fork has
+#      no commits of its own beyond upstream, otherwise a real merge (this
+#      fork does carry its own commits: the two build workflow files, which
+#      upstream doesn't have and never will, so a plain --ff-only will not
+#      apply after the first sync -- that's expected, not an error).
+#      Never force-pushes over anything; a genuine conflict fails the run
+#      loudly instead of guessing.
+#   3. Only if that actually moved HEAD, dispatch the unsigned-IPA build so
+#      the published SideStore source.json picks up the new code. No new
+#      upstream commits -> no rebuild, so this doesn't burn CI/Apple-signing
+#      minutes on a no-op every day.
+on:
+  schedule:
+    - cron: "17 5 * * *" # once a day
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cmp-rewrite
+          fetch-depth: 0
+
+      - name: Configure git identity for the sync commit (merge case only)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/NuvioMedia/NuvioMobile.git
+          git fetch upstream cmp-rewrite
+
+      - name: Bring upstream in (fast-forward, or merge if this fork has local commits)
+        id: sync
+        run: |
+          set -e
+          BEFORE=$(git rev-parse HEAD)
+          UPSTREAM_SHA=$(git rev-parse upstream/cmp-rewrite)
+
+          if [ "$BEFORE" = "$UPSTREAM_SHA" ]; then
+            echo "Already at upstream's tip ($BEFORE). Nothing to sync."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor HEAD upstream/cmp-rewrite; then
+            echo "This fork has no local-only commits -- fast-forwarding."
+            git merge --ff-only upstream/cmp-rewrite
+          else
+            echo "This fork has local-only commits (the build workflows) -- merging upstream on top instead of force-pushing over them."
+            if ! git merge upstream/cmp-rewrite --no-edit -m "Sync upstream NuvioMedia/NuvioMobile@${UPSTREAM_SHA}"; then
+              git merge --abort || true
+              echo "::error::Merging upstream/cmp-rewrite produced conflicts. Not auto-resolving -- needs a manual sync (git remote add upstream, fetch, merge, fix conflicts by hand)."
+              exit 1
+            fi
+          fi
+
+          AFTER=$(git rev-parse HEAD)
+          echo "Synced $BEFORE -> $AFTER"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push synced branch
+        if: steps.sync.outputs.changed == 'true'
+        run: git push origin cmp-rewrite
+
+      - name: Trigger IPA build + SideStore source.json republish
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-unsigned-ipa.yml --repo "${{ github.repository }}" --ref cmp-rewrite

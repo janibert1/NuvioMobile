@@ -27,12 +27,28 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history -- needed for the commit-count build-number stamp below
 
       - name: Init MPVKit submodule (local SPM package the Xcode project links against)
         # Only MPVKit -- the repo also carries an unrelated stale gitlink
         # (libass-android) with no matching .gitmodules entry, so a blanket
         # `--recursive` init would fail on it.
         run: git submodule update --init MPVKit
+
+      - name: Stamp build number from commit count
+        # Upstream's Version.xcconfig pins CURRENT_PROJECT_VERSION to a
+        # static value (e.g. 112) that only changes when the Nuvio
+        # maintainers bump it themselves. Left as-is, an upstream sync could
+        # bring in real code changes while buildVersion stays identical, and
+        # SideStore would never offer the update. Stamp it with the commit
+        # count of the exact tree being built instead -- it only ever goes
+        # up, and only when there's actually a new commit to build.
+        run: |
+          COUNT=$(git rev-list --count HEAD)
+          sed -i '' "s/^CURRENT_PROJECT_VERSION=.*/CURRENT_PROJECT_VERSION=${COUNT}/" iosApp/Configuration/Version.xcconfig
+          echo "Stamped CURRENT_PROJECT_VERSION=${COUNT}"
+          cat iosApp/Configuration/Version.xcconfig
 
       - uses: actions/setup-java@v4
         with:
