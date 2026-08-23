@@ -89,6 +89,24 @@ jobs:
       - name: Archive (unsigned, real device build)
         env:
           NUVIO_IOS_DISTRIBUTION: appstore
+        # CODE_SIGNING_ALLOWED=NO looks like the right way to build without a
+        # paid Apple account, but it silently breaks Kotlin Multiplatform:
+        # Xcode's Run Script build phase for this project shells out to
+        # `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode`, and
+        # that task treats CODE_SIGNING_ALLOWED=NO as "nothing to embed and
+        # sign" and SKIPS itself entirely (confirmed via the Gradle console
+        # output: "> Task :composeApp:embedAndSignAppleFrameworkForXcode
+        # SKIPPED"). generateRuntimeConfigs still runs and the framework
+        # still compiles correctly with the real Supabase config baked in --
+        # it just never gets copied into the .app bundle, so the archived
+        # binary silently ships without the shared Kotlin code's real
+        # config (or possibly without the framework's current build at
+        # all). Fix: sign ad-hoc (identity "-", no real cert/team needed,
+        # works fully offline) instead of disallowing signing outright --
+        # this keeps the Kotlin embed task happy. Our own explicit ad-hoc
+        # codesign step right after this one re-signs everything from
+        # scratch anyway, so whatever Xcode/Gradle's own ad-hoc signature
+        # looks like here doesn't need to be "correct", just non-NO.
         run: |
           xcodebuild archive \
             -project iosApp/iosApp.xcodeproj \
@@ -97,25 +115,24 @@ jobs:
             -archivePath "$PWD/build/Nuvio.xcarchive" \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGN_STYLE=Manual \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             DEVELOPMENT_TEAM=""
 
       - name: Ad-hoc codesign the app (SideStore needs a real signature to replace)
-        # CODE_SIGNING_ALLOWED=NO during the archive means the built binary
-        # (and Nuvio.app's DownloadsWidgetExtension.appex + all the MPVKit
-        # frameworks bundled into Frameworks/) has NO LC_CODE_SIGNATURE load
-        # command at all -- not even ad-hoc. SideStore/AltStore-family
-        # installers read an app's *existing* entitlements out of its
-        # current signature to build the provisioning profile it installs
-        # with; with nothing to read, App ID registration still succeeds
-        # (bundle ID only, from Info.plist) but the actual install then
-        # fails silently. Fix: ad-hoc sign (identity '-', no real
-        # cert/Team ID needed) every nested framework/appex innermost-out,
-        # then the outer .app itself, before zipping into the IPA.
+        # The archive step above now signs ad-hoc itself (CODE_SIGN_IDENTITY=
+        # "-", required to keep Gradle's embedAndSignAppleFrameworkForXcode
+        # task from skipping itself -- see the comment on that step). We
+        # still do a full explicit re-sign here regardless, innermost-out,
+        # as the actual source of truth: SideStore/AltStore-family installers
+        # read an app's *existing* entitlements out of its current signature
+        # to build the provisioning profile it installs with, so we want a
+        # signature we've verified ourselves rather than trusting whatever
+        # Xcode/Gradle's own ad-hoc pass produced. `--force` makes this safe
+        # to run whether or not a signature already exists.
         run: |
           cd build/Nuvio.xcarchive/Products/Applications
           APP=$(ls -d *.app | head -1)
