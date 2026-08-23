@@ -92,6 +92,30 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             DEVELOPMENT_TEAM=""
 
+      - name: Ad-hoc codesign the app (SideStore needs a real signature to replace)
+        # CODE_SIGNING_ALLOWED=NO during the archive means the built binary
+        # (and Nuvio.app's DownloadsWidgetExtension.appex + all the MPVKit
+        # frameworks bundled into Frameworks/) has NO LC_CODE_SIGNATURE load
+        # command at all -- not even ad-hoc. SideStore/AltStore-family
+        # installers read an app's *existing* entitlements out of its
+        # current signature to build the provisioning profile it installs
+        # with; with nothing to read, App ID registration still succeeds
+        # (bundle ID only, from Info.plist) but the actual install then
+        # fails silently. Fix: ad-hoc sign (identity '-', no real
+        # cert/Team ID needed) every nested framework/appex innermost-out,
+        # then the outer .app itself, before zipping into the IPA.
+        run: |
+          cd build/Nuvio.xcarchive/Products/Applications
+          APP=$(ls -d *.app | head -1)
+          find "$APP" \( -name "*.framework" -o -name "*.appex" \) -print0 \
+            | xargs -0 -I{} codesign --force --sign - "{}"
+          codesign --force --deep --sign - "$APP"
+          echo "--- verifying signature ---"
+          codesign -dv --verbose=4 "$APP" 2>&1
+          echo "--- LC_CODE_SIGNATURE present? ---"
+          EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
+          otool -l "$APP/$EXEC" | grep -A2 LC_CODE_SIGNATURE
+
       - name: Read app version + build + bundle id from the BUILT Info.plist
         id: appmeta
         # Read these straight out of the .app Xcode actually produced, never
