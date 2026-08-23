@@ -122,6 +122,58 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             DEVELOPMENT_TEAM=""
 
+      - name: Diagnose whether the Kotlin/Compose framework actually linked in
+        # Non-blocking (no exit 1) -- pure information gathering. The
+        # ComposeApp iOS framework is built with isStatic=true, so it should
+        # link directly into the main Nuvio executable at compile time
+        # rather than appear as a separate Frameworks/ComposeApp.framework
+        # entry -- confirmed by inspecting composeApp/build.gradle.kts. This
+        # step checks multiple independent signals so a real diagnosis is
+        # possible from one run instead of guessing again: (1) the actual
+        # generated Kotlin source file generateRuntimeConfigs writes, read
+        # straight from the Gradle build dir -- proves whether codegen wrote
+        # the right value at all, independent of whether it made it into the
+        # final binary; (2) whether ANY Kotlin/Native symbols exist in the
+        # executable at all (kfun: mangling prefix) -- proves whether the
+        # framework linked in at all, vs linked in stale/wrong; (3) a full
+        # case-insensitive "supabase" string scan across the whole app
+        # bundle, not just one exact URL string; (4) executable file size,
+        # since a binary with real Kotlin/Compose code baked in via static
+        # linking should be dramatically larger than a bare Swift/ObjC shell.
+        run: |
+          echo "--- (1) generated runtime config source, straight from the Gradle build dir ---"
+          find composeApp/build -iname "*RuntimeConfig*" -o -iname "*SupabaseConfig*" 2>/dev/null | while read -r f; do
+            echo "=== $f ==="
+            cat "$f"
+          done
+          echo ""
+          echo "--- (2)+(3)+(4): inspecting the built app bundle ---"
+          cd build/Nuvio.xcarchive/Products/Applications
+          APP=$(ls -d *.app | head -1)
+          EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
+          echo "app dir: $APP   executable: $EXEC"
+          ls -la "$APP/$EXEC"
+          echo ""
+          echo "--- any Kotlin/Native symbols at all? (kfun: mangling prefix) ---"
+          nm "$APP/$EXEC" 2>/dev/null | grep -c "kfun:" || echo "0 (nm found none, or nm failed -- see above)"
+          echo ""
+          echo "--- Frameworks/ contents ---"
+          ls "$APP/Frameworks/" 2>/dev/null || echo "(no Frameworks dir)"
+          echo ""
+          echo "--- case-insensitive 'supabase' anywhere in the main executable ---"
+          strings "$APP/$EXEC" 2>/dev/null | grep -i supabase | head -20 || echo "(none found)"
+          echo ""
+          echo "--- case-insensitive 'supabase' anywhere else in the bundle ---"
+          find "$APP" -type f \( -perm -u+x -o -name "*.framework" \) 2>/dev/null | while read -r f; do
+            if file "$f" 2>/dev/null | grep -q "Mach-O"; then
+              hits=$(strings "$f" 2>/dev/null | grep -ic supabase)
+              if [ "$hits" -gt 0 ]; then
+                echo "$f: $hits hits"
+                strings "$f" 2>/dev/null | grep -i supabase | head -5
+              fi
+            fi
+          done
+
       - name: Ad-hoc codesign the app (SideStore needs a real signature to replace)
         # The archive step above now signs ad-hoc itself (CODE_SIGN_IDENTITY=
         # "-", required to keep Gradle's embedAndSignAppleFrameworkForXcode
