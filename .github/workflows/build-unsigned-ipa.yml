@@ -24,7 +24,17 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # Self-hosted on Jan's own Mac Mini (registered 2026-08-23) instead of
+    # macos-latest -- eliminates the cold-start cost entirely (Xcode,
+    # Gradle deps, Kotlin/Native toolchain, SPM/MPVKit packages all persist
+    # on disk between runs) rather than needing GitHub Actions caching.
+    # Runs as a per-user LaunchAgent under the `jan` account specifically
+    # (not a system LaunchDaemon) -- confirmed necessary: `mas`/App Store
+    # downloads on this machine only work when jan's session is the active
+    # foreground one (Antoine's own account is also logged in via fast user
+    # switching), so keep this tied to jan's session rather than converting
+    # it to a LaunchDaemon later without re-verifying that still holds.
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v4
         with:
