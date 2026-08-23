@@ -55,6 +55,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Create empty local.properties
+        # composeApp's generateRuntimeConfigs Gradle task declares
+        # local.properties as a required @InputFile (its own properties are
+        # read with safe empty-string defaults, but Gradle still validates
+        # the file itself exists before the task runs at all). No secrets
+        # needed for this build -- Trakt/Supabase/Sentry just come back
+        # empty/disabled -- so an empty file satisfies Gradle without
+        # granting any actual credentials.
+        run: touch local.properties
+
       - name: Xcode version
         run: xcodebuild -version
 
