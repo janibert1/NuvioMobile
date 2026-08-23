@@ -55,15 +55,27 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Create empty local.properties
+      - name: Write local.properties with public Supabase config
         # composeApp's generateRuntimeConfigs Gradle task declares
-        # local.properties as a required @InputFile (its own properties are
-        # read with safe empty-string defaults, but Gradle still validates
-        # the file itself exists before the task runs at all). No secrets
-        # needed for this build -- Trakt/Supabase/Sentry just come back
-        # empty/disabled -- so an empty file satisfies Gradle without
-        # granting any actual credentials.
-        run: touch local.properties
+        # local.properties as a required @InputFile, so it must exist -- but
+        # an empty file (the earlier fix) left NUVIO_SUPABASE_URL/ANON_KEY
+        # unset, so the built app's Ktor client defaulted every backend call
+        # to https://localhost and failed to connect to anything at all
+        # (confirmed on-device: NSURLErrorDomain -1004 on every API call,
+        # e.g. account deletion). This is the same class of bug already
+        # fixed for Nuvio Desktop.
+        #
+        # These two values are NOT secrets: NUVIO_SUPABASE_ANON_KEY is a
+        # public, RLS-protected anon-role JWT meant to ship in every client
+        # (Nuvio's own official Android APK embeds the identical pair) --
+        # it's the equivalent of a public API base URL, not a credential.
+        # Trakt/Sentry stay unset; those are genuinely optional (only
+        # disable a couple of non-core integrations, confirmed earlier).
+        run: |
+          cat > local.properties <<'EOF'
+          NUVIO_SUPABASE_URL=https://api.nuvio.tv
+          NUVIO_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgxNTIxMzQ2LCJleHAiOjE5MzkyMDEzNDZ9.tmQaj682pwzehpqlgCDMnySOqiUvpgRbrE43T4VJpDI
+          EOF
 
       - name: Xcode version
         run: xcodebuild -version
@@ -134,6 +146,24 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           echo "bundle_id=$BUNDLE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the real Supabase backend got baked in (not localhost)
+        # Permanent regression guard for the "every backend call hits
+        # localhost" class of bug: fails the build outright if the compiled
+        # binary doesn't actually contain the real API host, instead of
+        # silently shipping an app that can't connect to anything.
+        run: |
+          cd build/Nuvio.xcarchive/Products/Applications
+          APP=$(ls -d *.app | head -1)
+          EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
+          echo "--- searching compiled binary for api.nuvio.tv ---"
+          if ! strings "$APP/$EXEC" | grep -q "api\.nuvio\.tv"; then
+            echo "::error::api.nuvio.tv not found in the built executable -- local.properties' NUVIO_SUPABASE_URL likely didn't make it into this build. The app would ship unable to reach any backend."
+            exit 1
+          fi
+          echo "OK: api.nuvio.tv is present in the compiled binary."
+          echo "--- searching for a literal https://localhost string (informational only -- may just be an SDK-internal fallback constant unrelated to our config) ---"
+          strings "$APP/$EXEC" | grep -n "https://localhost" || echo "(none found)"
 
       - name: Package raw IPA (Payload/*.app zipped, no signing)
         id: package
