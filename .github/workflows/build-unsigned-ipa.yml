@@ -89,24 +89,24 @@ jobs:
       - name: Archive (unsigned, real device build)
         env:
           NUVIO_IOS_DISTRIBUTION: appstore
-        # CODE_SIGNING_ALLOWED=NO looks like the right way to build without a
-        # paid Apple account, but it silently breaks Kotlin Multiplatform:
-        # Xcode's Run Script build phase for this project shells out to
-        # `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode`, and
-        # that task treats CODE_SIGNING_ALLOWED=NO as "nothing to embed and
-        # sign" and SKIPS itself entirely (confirmed via the Gradle console
-        # output: "> Task :composeApp:embedAndSignAppleFrameworkForXcode
-        # SKIPPED"). generateRuntimeConfigs still runs and the framework
-        # still compiles correctly with the real Supabase config baked in --
-        # it just never gets copied into the .app bundle, so the archived
-        # binary silently ships without the shared Kotlin code's real
-        # config (or possibly without the framework's current build at
-        # all). Fix: sign ad-hoc (identity "-", no real cert/team needed,
-        # works fully offline) instead of disallowing signing outright --
-        # this keeps the Kotlin embed task happy. Our own explicit ad-hoc
-        # codesign step right after this one re-signs everything from
-        # scratch anyway, so whatever Xcode/Gradle's own ad-hoc signature
-        # looks like here doesn't need to be "correct", just non-NO.
+        # Signs ad-hoc (identity "-") rather than CODE_SIGNING_ALLOWED=NO.
+        # A previous investigation into a build that shipped without the
+        # real Supabase config chased this flag as a suspected cause --
+        # ":composeApp:embedAndSignAppleFrameworkForXcode SKIPPED" in the
+        # Gradle log looked alarming -- but that turned out to be a false
+        # lead: ComposeApp is built with isStatic=true (see composeApp/
+        # build.gradle.kts), so it links directly into the main executable
+        # at compile time; the "embed" task is a dynamic-framework concept
+        # and is CORRECTLY a no-op here regardless of this signing setting.
+        # The real bug was in the verification step below (a `strings`
+        # encoding blind spot), already fixed there. Left as ad-hoc signing
+        # anyway since it's proven working (confirmed via a diagnostic run:
+        # 124889 Kotlin/Native symbols correctly present in the compiled
+        # binary) -- not worth spending another full CI cycle reverting an
+        # already-verified-correct config just for tidiness. Our own
+        # explicit ad-hoc codesign step right after this one re-signs
+        # everything from scratch regardless, so whatever signature Xcode/
+        # Gradle's own pass produces here doesn't need to be "correct".
         run: |
           xcodebuild archive \
             -project iosApp/iosApp.xcodeproj \
@@ -121,58 +121,6 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             DEVELOPMENT_TEAM=""
-
-      - name: Diagnose whether the Kotlin/Compose framework actually linked in
-        # Non-blocking (no exit 1) -- pure information gathering. The
-        # ComposeApp iOS framework is built with isStatic=true, so it should
-        # link directly into the main Nuvio executable at compile time
-        # rather than appear as a separate Frameworks/ComposeApp.framework
-        # entry -- confirmed by inspecting composeApp/build.gradle.kts. This
-        # step checks multiple independent signals so a real diagnosis is
-        # possible from one run instead of guessing again: (1) the actual
-        # generated Kotlin source file generateRuntimeConfigs writes, read
-        # straight from the Gradle build dir -- proves whether codegen wrote
-        # the right value at all, independent of whether it made it into the
-        # final binary; (2) whether ANY Kotlin/Native symbols exist in the
-        # executable at all (kfun: mangling prefix) -- proves whether the
-        # framework linked in at all, vs linked in stale/wrong; (3) a full
-        # case-insensitive "supabase" string scan across the whole app
-        # bundle, not just one exact URL string; (4) executable file size,
-        # since a binary with real Kotlin/Compose code baked in via static
-        # linking should be dramatically larger than a bare Swift/ObjC shell.
-        run: |
-          echo "--- (1) generated runtime config source, straight from the Gradle build dir ---"
-          find composeApp/build -iname "*RuntimeConfig*" -o -iname "*SupabaseConfig*" 2>/dev/null | while read -r f; do
-            echo "=== $f ==="
-            cat "$f"
-          done
-          echo ""
-          echo "--- (2)+(3)+(4): inspecting the built app bundle ---"
-          cd build/Nuvio.xcarchive/Products/Applications
-          APP=$(ls -d *.app | head -1)
-          EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
-          echo "app dir: $APP   executable: $EXEC"
-          ls -la "$APP/$EXEC"
-          echo ""
-          echo "--- any Kotlin/Native symbols at all? (kfun: mangling prefix) ---"
-          nm "$APP/$EXEC" 2>/dev/null | grep -c "kfun:" || echo "0 (nm found none, or nm failed -- see above)"
-          echo ""
-          echo "--- Frameworks/ contents ---"
-          ls "$APP/Frameworks/" 2>/dev/null || echo "(no Frameworks dir)"
-          echo ""
-          echo "--- case-insensitive 'supabase' anywhere in the main executable ---"
-          strings "$APP/$EXEC" 2>/dev/null | grep -i supabase | head -20 || echo "(none found)"
-          echo ""
-          echo "--- case-insensitive 'supabase' anywhere else in the bundle ---"
-          find "$APP" -type f \( -perm -u+x -o -name "*.framework" \) 2>/dev/null | while read -r f; do
-            if file "$f" 2>/dev/null | grep -q "Mach-O"; then
-              hits=$(strings "$f" 2>/dev/null | grep -ic supabase)
-              if [ "$hits" -gt 0 ]; then
-                echo "$f: $hits hits"
-                strings "$f" 2>/dev/null | grep -i supabase | head -5
-              fi
-            fi
-          done
 
       - name: Ad-hoc codesign the app (SideStore needs a real signature to replace)
         # The archive step above now signs ad-hoc itself (CODE_SIGN_IDENTITY=
@@ -221,16 +169,38 @@ jobs:
         # localhost" class of bug: fails the build outright if the compiled
         # binary doesn't actually contain the real API host, instead of
         # silently shipping an app that can't connect to anything.
+        #
+        # NOTE: plain `strings` on the executable is NOT enough here and
+        # gave a false failure once already. Kotlin's String type is UTF-16
+        # internally, so a `const val` string's actual VALUE can end up
+        # encoded as UTF-16 in the binary even though ASCII/UTF-8 symbol
+        # names (e.g. Objective-C selectors like `supabaseUrl`) show up in
+        # plain `strings` just fine -- confirmed live: a diagnostic run
+        # found 124889 Kotlin/Native symbols and plenty of Supabase-related
+        # SYMBOL NAMES in the binary (createSupabaseClient:config:,
+        # supabaseUrl, supabaseKey, etc.), proving the framework linked in
+        # correctly, while the literal string "api.nuvio.tv" still didn't
+        # show up under plain `strings` -- a false negative in the check
+        # itself, not a real bug in the app. Search raw bytes for both
+        # UTF-8 and UTF-16 (both byte orders) instead of trusting `strings`.
         run: |
           cd build/Nuvio.xcarchive/Products/Applications
           APP=$(ls -d *.app | head -1)
           EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
-          echo "--- searching compiled binary for api.nuvio.tv ---"
-          if ! strings "$APP/$EXEC" | grep -q "api\.nuvio\.tv"; then
-            echo "::error::api.nuvio.tv not found in the built executable -- local.properties' NUVIO_SUPABASE_URL likely didn't make it into this build. The app would ship unable to reach any backend."
+          echo "--- searching compiled binary for api.nuvio.tv (UTF-8 and UTF-16, both byte orders) ---"
+          FOUND=$(/usr/bin/python3 -c "
+needle = 'api.nuvio.tv'
+with open('$APP/$EXEC', 'rb') as f:
+    data = f.read()
+encodings = ['utf-8', 'utf-16-le', 'utf-16-be']
+hits = [enc for enc in encodings if needle.encode(enc) in data]
+print(','.join(hits) if hits else '')
+")
+          if [ -z "$FOUND" ]; then
+            echo "::error::api.nuvio.tv not found in the built executable under any encoding (utf-8, utf-16-le, utf-16-be) -- local.properties' NUVIO_SUPABASE_URL likely didn't make it into this build. The app would ship unable to reach any backend."
             exit 1
           fi
-          echo "OK: api.nuvio.tv is present in the compiled binary."
+          echo "OK: api.nuvio.tv is present in the compiled binary (encoding(s): $FOUND)."
           echo "--- searching for a literal https://localhost string (informational only -- may just be an SDK-internal fallback constant unrelated to our config) ---"
           strings "$APP/$EXEC" | grep -n "https://localhost" || echo "(none found)"
 
