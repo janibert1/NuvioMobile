@@ -25,6 +25,7 @@ import com.nuvio.app.navigation.DownloadShowRoute
 import com.nuvio.app.navigation.DownloadsSettingsRoute
 import com.nuvio.app.navigation.FolderDetailRoute
 import com.nuvio.app.navigation.NuvioNavigator
+import com.nuvio.app.navigation.RecommendationsRoute
 import com.nuvio.app.navigation.SettingsPageRoute
 
 @Composable
@@ -62,6 +63,9 @@ internal fun SettingsRootDestination(
         },
         onCollectionsClick = {
             navController.navigate(CollectionsRoute(collectionsTitle))
+        },
+        onRecommendationsClick = {
+            navController.navigate(RecommendationsRoute())
         },
         onCheckForUpdatesClick = onCheckForUpdates,
         onTestUpdateBannerClick = onTestUpdateBanner,

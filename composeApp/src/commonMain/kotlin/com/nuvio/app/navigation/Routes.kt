@@ -103,6 +103,10 @@ data class SupportersContributorsSettingsRoute(override val title: String = "") 
 @Serializable
 data class LicensesAttributionsSettingsRoute(override val title: String = "") : SettingsDestinationRoute
 
+/** On-device recommendations demo screen — see composeApp's features/recommender package. */
+@Serializable
+data class RecommendationsRoute(override val title: String = "") : SettingsDestinationRoute
+
 @Serializable
 data class CollectionsRoute(override val title: String = "") : SettingsDestinationRoute
 

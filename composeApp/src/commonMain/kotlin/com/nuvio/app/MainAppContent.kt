@@ -1529,6 +1529,16 @@ internal fun MainAppContent(
                         }
                     }
                 }
+                entry<RecommendationsRoute> { route ->
+                    SettingsDestination(route, navController) { onBack ->
+                        com.nuvio.app.features.recommender.RecommendationsScreen(
+                            onBack = onBack,
+                            onPosterClick = { preview ->
+                                navController.navigate(DetailRoute(type = preview.type, id = preview.id, title = preview.name))
+                            },
+                        )
+                    }
+                }
                 entry<LicensesAttributionsSettingsRoute> { route ->
                     SettingsDestination(route, navController) { onBack ->
                         LicensesAttributionsSettingsScreen(onBack = onBack)

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Policy
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -79,6 +80,7 @@ internal fun LazyListScope.settingsRootContent(
     onTrackingClick: () -> Unit,
     onSupportersContributorsClick: () -> Unit,
     onLicensesAttributionsClick: () -> Unit,
+    onRecommendationsClick: () -> Unit = {},
     onCheckForUpdatesClick: (() -> Unit)? = null,
     onTestUpdateBannerClick: (() -> Unit)? = null,
     onDownloadsClick: () -> Unit,
@@ -216,6 +218,17 @@ internal fun LazyListScope.settingsRootContent(
                         icon = Icons.Rounded.Info,
                         isTablet = isTablet,
                         onClick = onLicensesAttributionsClick,
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    // Demo entry point for the on-device recommender (not localized —
+                    // this is a proof-of-concept feature, not a finished settings page;
+                    // see features/recommender and https://github.com/janibert1/nuvio-recommender).
+                    SettingsNavigationRow(
+                        title = "Recommended for you (experimental)",
+                        description = "On-device recommendations, no account or server required",
+                        icon = Icons.Rounded.Star,
+                        isTablet = isTablet,
+                        onClick = onRecommendationsClick,
                     )
                     if (onCheckForUpdatesClick != null) {
                         SettingsGroupDivider(isTablet = isTablet)
