@@ -107,6 +107,26 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
             )
         }
 
+        outDir.resolve("com/nuvio/app/features/notifications").apply {
+            mkdirs()
+            resolve("NtfyConfig.kt").writeText(
+                """
+                |package com.nuvio.app.features.notifications
+                |
+                |// Episode-release notifications are delivered via ntfy (docs.ntfy.sh)
+                |// instead of local UNUserNotificationCenter scheduling on iOS - local
+                |// notifications don't reliably fire when this app is running under
+                |// LiveContainer (its shared-process model breaks OS-level scheduled
+                |// wake-ups for guest apps). ntfy sidesteps this entirely: delivery is
+                |// server-side and handled by the real, independently-signed ntfy app.
+                |object NtfyConfig {
+                |    const val SERVER = "${props.getProperty("NTFY_SERVER", "https://ntfy.sh")}"
+                |    const val TOPIC = "${props.getProperty("NTFY_TOPIC", "")}"
+                |}
+                """.trimMargin()
+            )
+        }
+
         outDir.resolve("com/nuvio/app/features/player/skip").apply {
             mkdirs()
             resolve("IntroDbConfig.kt").writeText(
