@@ -65,7 +65,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Write local.properties with public Supabase config
+      - name: Write local.properties with public Supabase config + Trakt credentials
         # composeApp's generateRuntimeConfigs Gradle task declares
         # local.properties as a required @InputFile, so it must exist -- but
         # an empty file (the earlier fix) left NUVIO_SUPABASE_URL/ANON_KEY
@@ -75,16 +75,26 @@ jobs:
         # e.g. account deletion). This is the same class of bug already
         # fixed for Nuvio Desktop.
         #
-        # These two values are NOT secrets: NUVIO_SUPABASE_ANON_KEY is a
-        # public, RLS-protected anon-role JWT meant to ship in every client
+        # NUVIO_SUPABASE_ANON_KEY is NOT a secret: it's a public,
+        # RLS-protected anon-role JWT meant to ship in every client
         # (Nuvio's own official Android APK embeds the identical pair) --
         # it's the equivalent of a public API base URL, not a credential.
-        # Trakt/Sentry stay unset; those are genuinely optional (only
-        # disable a couple of non-core integrations, confirmed earlier).
+        # TRAKT_CLIENT_SECRET IS a real credential (unlike the Supabase key
+        # above) and this build is publicly downloadable, so both Trakt
+        # values come from GitHub Actions secrets (2026-08-27) rather than
+        # being hardcoded here, and are passed through env: so they never
+        # appear in the workflow file or step logs. Sentry stays unset;
+        # that's still genuinely optional (confirmed earlier).
+        env:
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
         run: |
-          cat > local.properties <<'EOF'
+          cat > local.properties <<EOF
           NUVIO_SUPABASE_URL=https://api.nuvio.tv
           NUVIO_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgxNTIxMzQ2LCJleHAiOjE5MzkyMDEzNDZ9.tmQaj682pwzehpqlgCDMnySOqiUvpgRbrE43T4VJpDI
+          TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID}
+          TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET}
+          TRAKT_REDIRECT_URI=nuvio://auth/trakt
           EOF
 
       - name: Xcode version
