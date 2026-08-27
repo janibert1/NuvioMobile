@@ -127,6 +127,24 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
             )
         }
 
+        outDir.resolve("com/nuvio/app/features/nuviotrack").apply {
+            mkdirs()
+            resolve("NuvioTrackConfig.kt").writeText(
+                """
+                |package com.nuvio.app.features.nuviotrack
+                |
+                |// Self-hosted open-source Trakt/Simkl alternative -
+                |// github.com/janibert1/nuvio-track. SERVER+API_KEY empty
+                |// means the feature is simply off (same posture as
+                |// Trakt/Simkl being unconfigured).
+                |object NuvioTrackConfig {
+                |    const val SERVER = "${props.getProperty("NUVIOTRACK_SERVER", "")}"
+                |    const val API_KEY = "${props.getProperty("NUVIOTRACK_API_KEY", "")}"
+                |}
+                """.trimMargin()
+            )
+        }
+
         outDir.resolve("com/nuvio/app/features/player/skip").apply {
             mkdirs()
             resolve("IntroDbConfig.kt").writeText(

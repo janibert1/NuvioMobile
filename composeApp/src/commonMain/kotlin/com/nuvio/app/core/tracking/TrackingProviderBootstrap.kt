@@ -8,6 +8,8 @@ import com.nuvio.app.features.simkl.SimklTrackingLibraryProvider
 import com.nuvio.app.features.simkl.SimklTrackingProgressProvider
 import com.nuvio.app.features.simkl.SimklWatchedSyncAdapter
 import com.nuvio.app.features.simkl.SimklSyncRepository
+import com.nuvio.app.features.nuviotrack.NuvioTrackAuthRepository
+import com.nuvio.app.features.nuviotrack.NuvioTrackMutationRepository
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
 import com.nuvio.app.features.trakt.TraktAuthRepository
 import com.nuvio.app.features.trakt.TraktScrobbleRepository
@@ -23,6 +25,8 @@ fun ensureTrackingProvidersRegistered() {
     SimklLibraryRepository.uiState
     SimklProgressRepository.uiState
     SimklMutationRepository.ensureRegistered()
+    NuvioTrackAuthRepository.descriptor
+    NuvioTrackMutationRepository.providerId
     TrackingProviderRegistry.registerLibraryProvider(TraktTrackingLibraryProvider)
     TrackingProviderRegistry.registerLibraryProvider(SimklTrackingLibraryProvider)
     TrackingProviderRegistry.registerWatchedProvider(TraktWatchedSyncAdapter)

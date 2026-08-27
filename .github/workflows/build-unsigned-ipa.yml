@@ -89,6 +89,8 @@ jobs:
           TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NUVIOTRACK_SERVER: ${{ secrets.NUVIOTRACK_SERVER }}
+          NUVIOTRACK_API_KEY: ${{ secrets.NUVIOTRACK_API_KEY }}
         run: |
           cat > local.properties <<EOF
           NUVIO_SUPABASE_URL=https://api.nuvio.tv
@@ -97,6 +99,8 @@ jobs:
           TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET}
           TRAKT_REDIRECT_URI=nuvio://auth/trakt
           NTFY_TOPIC=${NTFY_TOPIC}
+          NUVIOTRACK_SERVER=${NUVIOTRACK_SERVER}
+          NUVIOTRACK_API_KEY=${NUVIOTRACK_API_KEY}
           EOF
 
       - name: Xcode version
