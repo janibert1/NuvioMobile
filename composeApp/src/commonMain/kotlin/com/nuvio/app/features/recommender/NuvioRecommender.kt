@@ -5,10 +5,13 @@ import kotlinx.serialization.json.Json
 import nuvio.composeapp.generated.resources.Res
 
 @Serializable
-internal data class RecommenderManifest(
+data class RecommenderManifest(
     val embed_dim: Int,
     val hidden_dim: Int,
     val catalog_size: Int,
+    val movie_count: Int = 0,
+    val tv_count: Int = 0,
+    val trained_date: String = "",
 )
 
 /**
@@ -122,6 +125,11 @@ class NuvioRecommender private constructor(
 
     companion object {
         private const val BASE = "files/recommender/"
+
+        /** Just the small manifest.json (a few hundred bytes) — for a settings/about
+         * screen that wants catalog stats without paying for the ~18MB full load. */
+        suspend fun loadManifest(): RecommenderManifest =
+            Json.decodeFromString(Res.readBytes("$BASE" + "manifest.json").decodeToString())
 
         suspend fun load(): NuvioRecommender {
             val manifest = Json.decodeFromString<RecommenderManifest>(

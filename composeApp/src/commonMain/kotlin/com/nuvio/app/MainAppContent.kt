@@ -1531,6 +1531,14 @@ internal fun MainAppContent(
                 }
                 entry<RecommendationsRoute> { route ->
                     SettingsDestination(route, navController) { onBack ->
+                        com.nuvio.app.features.recommender.RecommenderSettingsScreen(
+                            onBack = onBack,
+                            onViewRecommendations = { navController.navigate(RecommendationsListRoute()) },
+                        )
+                    }
+                }
+                entry<RecommendationsListRoute> { route ->
+                    SettingsDestination(route, navController) { onBack ->
                         com.nuvio.app.features.recommender.RecommendationsScreen(
                             onBack = onBack,
                             onPosterClick = { preview ->
