@@ -6,5 +6,8 @@
   "title_hash_buckets": 65536,
   "title_embed_dim": 32,
   "catalog_size": 69781,
+  "movie_count": 62316,
+  "tv_count": 7465,
+  "trained_date": "2026-08-28",
   "checkpoint_source": "model/checkpoints/two_tower_v2_latest.pt"
 }
