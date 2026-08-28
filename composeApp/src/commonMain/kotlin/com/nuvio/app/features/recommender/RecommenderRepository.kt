@@ -62,7 +62,23 @@ object RecommenderRepository {
      * (a brand new profile, or a history made entirely of non-TMDB ids) —
      * see [NuvioRecommender.recommendFor].
      */
-    suspend fun recommendedPreviews(topK: Int = 20): List<MetaPreview> = coroutineScope {
+    suspend fun recommendedPreviews(topK: Int = 20): List<MetaPreview> {
+        // Whole body wrapped, not just individual steps: an uncaught
+        // exception in a caller's LaunchedEffect crashes the entire app,
+        // not just this screen (confirmed live 2026-08-28 - a missing
+        // try/catch at ONE call site was enough to take the whole app
+        // down on tap). This is the actual safety net; callers should
+        // still handle a thrown exception gracefully too, defense in
+        // depth, but must never rely on that alone.
+        return try {
+            recommendedPreviewsUnsafe(topK)
+        } catch (t: Throwable) {
+            Logger.w("RecommenderRepository") { "recommendedPreviews failed: ${t.message}" }
+            emptyList()
+        }
+    }
+
+    private suspend fun recommendedPreviewsUnsafe(topK: Int): List<MetaPreview> = coroutineScope {
         val engine = ensureLoaded() ?: return@coroutineScope emptyList()
 
         val entries = WatchProgressRepository.uiState.value.entries
@@ -76,7 +92,7 @@ object RecommenderRepository {
         recommendedIds.map { tmdbId ->
             async {
                 val type = engine.typeFor(tmdbId) ?: "movie"
-                TmdbMetadataService.fetchStandaloneMeta(type, "tmdb:$tmdbId", settings)
+                runCatching { TmdbMetadataService.fetchStandaloneMeta(type, "tmdb:$tmdbId", settings) }.getOrNull()
             }
         }.mapNotNull { it.await() }.map { meta ->
             MetaPreview(

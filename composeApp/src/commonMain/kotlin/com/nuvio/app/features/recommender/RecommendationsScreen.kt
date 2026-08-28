@@ -39,7 +39,15 @@ fun RecommendationsScreen(
     var previews by remember { mutableStateOf<List<MetaPreview>?>(null) }
 
     LaunchedEffect(Unit) {
-        previews = RecommenderRepository.recommendedPreviews(topK = 20)
+        // An uncaught exception here crashes the whole app, not just this
+        // screen - a LaunchedEffect coroutine's exception isn't contained
+        // to the composable that launched it. Confirmed the hard way: this
+        // was missing and Jan's tap crashed the entire app (2026-08-28).
+        previews = try {
+            RecommenderRepository.recommendedPreviews(topK = 20)
+        } catch (t: Throwable) {
+            emptyList()
+        }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
