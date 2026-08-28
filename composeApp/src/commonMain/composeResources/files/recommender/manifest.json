@@ -2,9 +2,9 @@
   "embed_dim": 64,
   "hidden_dim": 128,
   "num_genres": 19,
-  "max_title_words": 12,
+  "max_title_words": 48,
   "title_hash_buckets": 65536,
   "title_embed_dim": 32,
-  "catalog_size": 64516,
-  "checkpoint_source": "model/checkpoints/two_tower_latest.pt"
+  "catalog_size": 69781,
+  "checkpoint_source": "model/checkpoints/two_tower_v2_latest.pt"
 }

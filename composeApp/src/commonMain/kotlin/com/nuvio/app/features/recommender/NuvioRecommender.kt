@@ -43,6 +43,16 @@ data class RecommenderManifest(
  * TMDB id) is simply skipped rather than scored — graceful degradation,
  * not a crash or a stale placeholder embedding.
  */
+
+/**
+ * Score penalty applied to a candidate whose type (movie/tv) doesn't match
+ * the user's dominant history type — see the note on [NuvioRecommender.recommendFor].
+ * Picked empirically: observed spurious cross-type matches scoring ~0.64-0.77
+ * cosine similarity, genuine same-type matches ~0.7-0.9+ — 0.15 pushes most
+ * of the former below the latter without blocking a real cross-type match
+ * that scores unusually high.
+ */
+private const val CROSS_TYPE_PENALTY = 0.15f
 class NuvioRecommender private constructor(
     private val embedDim: Int,
     private val hiddenDim: Int,
@@ -100,14 +110,20 @@ class NuvioRecommender private constructor(
         return l2Normalize(out)
     }
 
-    /** Ranks the whole shipped catalog by dot product (cosine, both sides are L2-normalized) against [userVector]. */
-    fun recommend(userVector: FloatArray, excludeIds: Set<Int>, topK: Int = 20): List<Int> {
+    /**
+     * Ranks the whole shipped catalog by dot product (cosine, both sides are
+     * L2-normalized) against [userVector]. [preferredType] ("movie"/"tv"),
+     * when non-null, applies a small score penalty to non-matching-type
+     * candidates - see the cross-type penalty note on [recommendFor] for why.
+     */
+    fun recommend(userVector: FloatArray, excludeIds: Set<Int>, topK: Int = 20, preferredType: String? = null): List<Int> {
         val scored = ArrayList<Pair<Int, Float>>(catalogIds.size)
         for ((row, id) in catalogIds.withIndex()) {
             if (id in excludeIds) continue
             val base = row * embedDim
             var dot = 0f
             for (d in 0 until embedDim) dot += userVector[d] * catalogItemVectors[base + d]
+            if (preferredType != null && catalogTypes[row] != preferredType) dot -= CROSS_TYPE_PENALTY
             scored += id to dot
         }
         return scored.sortedByDescending { it.second }.take(topK).map { it.first }
@@ -117,10 +133,36 @@ class NuvioRecommender private constructor(
     fun recommendPopular(excludeIds: Set<Int>, topK: Int = 20): List<Int> =
         popularityRank.asSequence().filter { it !in excludeIds }.take(topK).toList()
 
-    /** The one method most callers actually want: personalizes if there's usable history, falls back to popularity otherwise. */
+    /**
+     * The one method most callers actually want: personalizes if there's
+     * usable history, falls back to popularity otherwise.
+     *
+     * Applies a cross-type penalty (see [recommend]) keyed off whichever
+     * type (movie/TV) dominates the user's own history: the item-item TV
+     * training pass (data/fetch_tv_pairs.py's weak supervision) has no
+     * explicit signal keeping TV embeddings appropriately distant from
+     * unrelated movie embeddings, only same-type-vs-same-type contrast -
+     * confirmed live via eval.py: a handful of TV shows show up as
+     * nearest-neighbor "matches" for movies they have nothing to do with
+     * (e.g. a documentary surfacing near The Matrix). Fixing this properly
+     * belongs in training (an explicit cross-type negative term, or scaling
+     * back how many epochs the TV pass gets relative to movies) - this is
+     * a serving-side stopgap, not a real fix, and should be revisited
+     * before this ships beyond a demo.
+     */
     fun recommendFor(historyTmdbIds: List<Int>, excludeIds: Set<Int>, topK: Int = 20): List<Int> {
         val userVector = userVectorFor(historyTmdbIds)
-        return if (userVector != null) recommend(userVector, excludeIds, topK) else recommendPopular(excludeIds, topK)
+        if (userVector == null) return recommendPopular(excludeIds, topK)
+
+        val historyTypes = historyTmdbIds.mapNotNull { typeFor(it) }
+        val movieCount = historyTypes.count { it == "movie" }
+        val tvCount = historyTypes.count { it == "tv" }
+        val preferredType = when {
+            movieCount == 0 && tvCount == 0 -> null // unknown history, no bias
+            movieCount >= tvCount -> "movie"
+            else -> "tv"
+        }
+        return recommend(userVector, excludeIds, topK, preferredType)
     }
 
     companion object {
