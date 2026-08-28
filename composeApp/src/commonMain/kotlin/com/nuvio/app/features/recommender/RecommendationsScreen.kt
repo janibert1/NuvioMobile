@@ -73,6 +73,14 @@ fun RecommendationsScreen(
                     Text(
                         text = "No recommendations yet — watch a few things first.",
                         style = MaterialTheme.typography.bodyMedium,
+                        // Explicit color: without it this rendered as
+                        // low-contrast dark-gray-on-black (reported live,
+                        // 2026-08-28) - Text() without an explicit color
+                        // falls back to LocalContentColor here, which
+                        // isn't guaranteed readable against this screen's
+                        // background the way it is on screens that sit
+                        // inside a Surface with a matching contentColor.
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(16.dp),
                     )
                 }

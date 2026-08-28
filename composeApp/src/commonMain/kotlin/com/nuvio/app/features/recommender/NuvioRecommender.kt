@@ -4,6 +4,18 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import nuvio.composeapp.generated.resources.Res
 
+// The training repo's manifest.json export carries more fields (num_genres,
+// max_title_words, title_hash_buckets, title_embed_dim,
+// checkpoint_source, ...) than RecommenderManifest declares - the default
+// Json instance rejects unknown keys, which was silently failing every
+// single manifest/model load (confirmed live: "Couldn't load the model
+// info." on both the settings page AND the empty homescreen row, since
+// both ultimately go through this same decode call). Use a lenient
+// instance instead of adding every training-side field to this class -
+// the training repo is a separate project that can add fields freely
+// without this app needing a matching update each time.
+private val recommenderJson = Json { ignoreUnknownKeys = true }
+
 @Serializable
 data class RecommenderManifest(
     val embed_dim: Int,
@@ -171,19 +183,19 @@ class NuvioRecommender private constructor(
         /** Just the small manifest.json (a few hundred bytes) — for a settings/about
          * screen that wants catalog stats without paying for the ~18MB full load. */
         suspend fun loadManifest(): RecommenderManifest =
-            Json.decodeFromString(Res.readBytes("$BASE" + "manifest.json").decodeToString())
+            recommenderJson.decodeFromString(Res.readBytes("$BASE" + "manifest.json").decodeToString())
 
         suspend fun load(): NuvioRecommender {
-            val manifest = Json.decodeFromString<RecommenderManifest>(
+            val manifest = recommenderJson.decodeFromString<RecommenderManifest>(
                 Res.readBytes("$BASE" + "manifest.json").decodeToString()
             )
-            val catalogIds = Json.decodeFromString<List<Int>>(
+            val catalogIds = recommenderJson.decodeFromString<List<Int>>(
                 Res.readBytes("$BASE" + "catalog_ids.json").decodeToString()
             )
-            val catalogTypes = Json.decodeFromString<List<String>>(
+            val catalogTypes = recommenderJson.decodeFromString<List<String>>(
                 Res.readBytes("$BASE" + "catalog_types.json").decodeToString()
             )
-            val popularityRank = Json.decodeFromString<List<Int>>(
+            val popularityRank = recommenderJson.decodeFromString<List<Int>>(
                 Res.readBytes("$BASE" + "popularity_rank.json").decodeToString()
             )
             return NuvioRecommender(
