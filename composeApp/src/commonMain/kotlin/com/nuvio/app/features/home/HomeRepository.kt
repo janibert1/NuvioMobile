@@ -43,6 +43,44 @@ object HomeRepository {
     private var lastPublishedCatalogHeroEmpty: Boolean = true
     private var lastErrorMessage: String? = null
 
+    // On-device recommendations row — deliberately NOT wired through the
+    // addon/HomeCatalogDefinition machinery above (CatalogTarget has exactly
+    // three known variants, all consumed by exhaustive `when` blocks
+    // elsewhere; adding a fourth for "on-device model" risked breaking call
+    // sites this change had no visibility into). Instead: an independent,
+    // one-shot fetch cached here and appended directly in
+    // publishCurrentState(). Trade-off, stated plainly: this row can't be
+    // reordered/hidden from the homescreen customization screen the way
+    // addon-backed rows can, and tapping its header ("view all") does
+    // nothing — hasMore stays false specifically so that's never offered.
+    // Individual posters still work normally (same onPosterClick path as
+    // every other row).
+    private var cachedRecommendedSection: HomeCatalogSection? = null
+    private var recommendedSectionJob: Job? = null
+
+    private fun ensureRecommendedSection(requestKey: String) {
+        if (cachedRecommendedSection != null || recommendedSectionJob?.isActive == true) return
+        recommendedSectionJob = scope.launch {
+            val previews = runCatching {
+                com.nuvio.app.features.recommender.RecommenderRepository.recommendedPreviews(topK = 20)
+            }.getOrNull().orEmpty()
+            if (previews.isEmpty()) return@launch
+            cachedRecommendedSection = HomeCatalogSection(
+                key = "on_device_recommended",
+                title = "Recommended for you",
+                subtitle = "",
+                addonName = "On-device",
+                target = CatalogTarget.Library(contentType = "movie", sectionType = "recommended"),
+                items = previews,
+                availableItemCount = previews.size,
+                hasMore = false,
+            )
+            if (currentRequestKey == requestKey) {
+                publishCurrentState(isLoading = _uiState.value.isLoading, requestKey = requestKey)
+            }
+        }
+    }
+
     fun refresh(addons: List<ManagedAddon>, force: Boolean = false) {
         val activeAddons = addons.enabledAddons()
         val requests = buildHomeCatalogDefinitions(activeAddons)
@@ -51,6 +89,7 @@ object HomeRepository {
         cachedSections = cachedSections.filterKeys(requestCacheKeys::contains)
         val requestKey = requests.joinToString(separator = "|", transform = HomeCatalogDefinition::cacheKey)
         currentRequestKey = requestKey
+        ensureRecommendedSection(requestKey)
 
         if (!force && activeRequestKey == requestKey && _uiState.value.isLoading) return
         activeRequestKey = requestKey
@@ -177,7 +216,7 @@ object HomeRepository {
         fun HomeCatalogSection.withReleaseFilter(): HomeCatalogSection =
             if (todayIsoDate == null) this else filterReleasedItems(todayIsoDate)
 
-        val sections = currentDefinitions
+        val addonSections = currentDefinitions
             .sortedBy { definition -> preferences[definition.key]?.order ?: Int.MAX_VALUE }
             .mapNotNull { definition ->
                 val preference = preferences[definition.key]
@@ -190,6 +229,11 @@ object HomeRepository {
                     title = customTitle.ifBlank { definition.titleFor(snapshot.showCatalogType) },
                 )
             }
+        // On-device recommendations first, ahead of every addon-backed row —
+        // see the field comment on cachedRecommendedSection for why this
+        // isn't wired through the same definition/preference system as the
+        // rest of these (so it doesn't respect user reordering/hiding yet).
+        val sections = listOfNotNull(cachedRecommendedSection?.takeIf { it.items.isNotEmpty() }) + addonSections
 
         val catalogHeroItems = if (snapshot.heroEnabled) {
             val heroRandom = Random((requestKey?.hashCode() ?: 0).absoluteValue + 1)
