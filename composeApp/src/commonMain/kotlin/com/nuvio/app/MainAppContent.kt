@@ -1340,6 +1340,9 @@ internal fun MainAppContent(
                                 onLicensesAttributionsSettingsClick = {
                                     navController.navigate(LicensesAttributionsSettingsRoute(licensesSettingsTitle))
                                 },
+                                onRecommendationsSettingsClick = {
+                                    navController.navigate(RecommendationsRoute())
+                                },
                                 onCheckForUpdatesClick = if (AppFeaturePolicy.inAppUpdaterEnabled) {
                                     {
                                         appUpdaterController.checkForUpdates(
