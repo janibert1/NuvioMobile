@@ -19,6 +19,29 @@ object PlayerSubtitleCueParser {
         }
     }
 
+    /**
+     * Same format-detection and parsing as [parse], but keeps each cue's end time
+     * instead of discarding it — used by [SubtitleAudioAligner] to build a "subtitles
+     * expect speech here" interval signal. Kept as a separate entry point rather than
+     * changing [parse]'s return type so the existing manual-sync call site (which only
+     * ever needed start times) is untouched.
+     */
+    fun parseWithRanges(text: String, sourceUrl: String? = null): List<SubtitleAlignmentCue> {
+        val normalized = text
+            .removePrefix("\uFEFF")
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .trim()
+        if (normalized.isBlank()) return emptyList()
+
+        return when (detectSubtitleFormat(sourceUrl, normalized)) {
+            SubtitleFormatHint.WebVtt -> parseWebVttRanges(normalized)
+            SubtitleFormatHint.Ass -> parseAssRanges(normalized)
+            SubtitleFormatHint.Ttml -> parseTtmlRanges(normalized)
+            SubtitleFormatHint.Srt -> parseSrtRanges(normalized)
+        }
+    }
+
     private enum class SubtitleFormatHint {
         Srt,
         WebVtt,
@@ -149,6 +172,99 @@ object PlayerSubtitleCueParser {
         val startPart = timingLine.substringBefore("-->").trim()
         return parseTimestamp(startPart)
     }
+
+    /** [start, end) for a "HH:MM:SS,mmm --> HH:MM:SS,mmm ..." style timing line (SRT/WebVTT). */
+    private fun parseCueRange(timingLine: String): Pair<Long, Long>? {
+        val start = parseCueStart(timingLine) ?: return null
+        val endPart = timingLine.substringAfter("-->", "").trim()
+        val end = parseTimestamp(endPart) ?: return null
+        return if (end > start) start to end else null
+    }
+
+    private fun parseSrtRanges(text: String): List<SubtitleAlignmentCue> =
+        text.split(Regex("\n{2,}"))
+            .mapNotNull { block ->
+                val lines = block.lines().map { it.trim() }.filter { it.isNotBlank() }
+                val timingIndex = lines.indexOfFirst { it.contains("-->") }
+                if (timingIndex < 0) return@mapNotNull null
+                val (start, end) = parseCueRange(lines[timingIndex]) ?: return@mapNotNull null
+                SubtitleAlignmentCue(start, end)
+            }
+            .sortedBy { it.startMs }
+
+    private fun parseWebVttRanges(text: String): List<SubtitleAlignmentCue> =
+        text.lines()
+            .dropWhile { it.trim().isEmpty() || it.trim().startsWith("WEBVTT") }
+            .joinToString("\n")
+            .split(Regex("\n{2,}"))
+            .mapNotNull { block ->
+                val lines = block.lines()
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() && !it.startsWith("NOTE") }
+                val timingIndex = lines.indexOfFirst { it.contains("-->") }
+                if (timingIndex < 0) return@mapNotNull null
+                val (start, end) = parseCueRange(lines[timingIndex]) ?: return@mapNotNull null
+                SubtitleAlignmentCue(start, end)
+            }
+            .sortedBy { it.startMs }
+
+    private fun parseAssRanges(text: String): List<SubtitleAlignmentCue> {
+        var inEventsSection = false
+        var formatFields: List<String>? = null
+
+        return text.lines()
+            .mapNotNull { rawLine ->
+                val line = rawLine.trim()
+                when {
+                    line.equals("[Events]", ignoreCase = true) -> {
+                        inEventsSection = true
+                        null
+                    }
+                    line.startsWith("[") && line.endsWith("]") -> {
+                        inEventsSection = false
+                        null
+                    }
+                    inEventsSection && line.startsWith("Format:", ignoreCase = true) -> {
+                        formatFields = line.substringAfter(':').split(',').map { it.trim() }
+                        null
+                    }
+                    inEventsSection && line.startsWith("Dialogue:", ignoreCase = true) ->
+                        parseAssDialogueRange(line.substringAfter(':'), formatFields)
+                    else -> null
+                }
+            }
+            .sortedBy { it.startMs }
+    }
+
+    private fun parseAssDialogueRange(payload: String, formatFields: List<String>?): SubtitleAlignmentCue? {
+        val fields = formatFields.orEmpty()
+        val parts = payload
+            .split(',', limit = fields.ifEmpty { defaultAssFormatFields }.size)
+            .map { it.trim() }
+        val startIndex = fields.indexOfField("Start").takeIf { it >= 0 } ?: 1
+        val endIndex = fields.indexOfField("End").takeIf { it >= 0 } ?: 2
+
+        if (parts.size <= startIndex || parts.size <= endIndex) return null
+        val start = parseTimestamp(parts[startIndex]) ?: return null
+        val end = parseTimestamp(parts[endIndex]) ?: return null
+        return if (end > start) SubtitleAlignmentCue(start, end) else null
+    }
+
+    private fun parseTtmlRanges(text: String): List<SubtitleAlignmentCue> =
+        Regex("""<p\b([^>]*)>([\s\S]*?)</p>""", RegexOption.IGNORE_CASE)
+            .findAll(text)
+            .mapNotNull { match ->
+                val attrs = match.groupValues[1]
+                val startRaw = attrs.attributeValue("begin") ?: attrs.attributeValue("start")
+                    ?: return@mapNotNull null
+                val start = parseTtmlTimestamp(startRaw) ?: return@mapNotNull null
+                val end = attrs.attributeValue("end")?.let { parseTtmlTimestamp(it) }
+                    ?: attrs.attributeValue("dur")?.let { parseTtmlTimestamp(it) }?.let { start + it }
+                    ?: return@mapNotNull null
+                if (end > start) SubtitleAlignmentCue(start, end) else null
+            }
+            .sortedBy { it.startMs }
+            .toList()
 
     private fun parseTimestamp(raw: String): Long? {
         val cleaned = raw.substringBefore(' ').replace(',', '.')

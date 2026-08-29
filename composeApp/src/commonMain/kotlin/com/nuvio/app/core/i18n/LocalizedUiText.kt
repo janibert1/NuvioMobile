@@ -6,6 +6,8 @@ import nuvio.composeapp.generated.resources.action_play
 import nuvio.composeapp.generated.resources.action_play_episode
 import nuvio.composeapp.generated.resources.action_resume
 import nuvio.composeapp.generated.resources.action_resume_episode
+import nuvio.composeapp.generated.resources.compose_player_auto_sync_no_audio_analyzed
+import nuvio.composeapp.generated.resources.compose_player_auto_sync_no_confident_match
 import nuvio.composeapp.generated.resources.compose_player_episode_code_episode_only
 import nuvio.composeapp.generated.resources.compose_player_episode_code_full
 import nuvio.composeapp.generated.resources.compose_player_no_subtitle_lines_found
@@ -146,6 +148,16 @@ fun localizedNoSubtitleLinesFound(): String =
 
 fun localizedSubtitleLinesLoadError(): String =
     resourceString("Unable to load subtitle lines") { getString(Res.string.compose_player_subtitle_lines_load_error) }
+
+fun localizedSubtitleAutoSyncNoConfidentMatch(): String =
+    resourceString("Couldn't find a confident sync point — try the manual method instead") {
+        getString(Res.string.compose_player_auto_sync_no_confident_match)
+    }
+
+fun localizedSubtitleAutoSyncNoAudioAnalyzed(): String =
+    resourceString("Couldn't analyze the audio for this video") {
+        getString(Res.string.compose_player_auto_sync_no_audio_analyzed)
+    }
 
 fun localizedBadgeImportFailed(): String =
     resourceString("Badge import failed.") { getString(Res.string.settings_stream_badge_import_failed) }

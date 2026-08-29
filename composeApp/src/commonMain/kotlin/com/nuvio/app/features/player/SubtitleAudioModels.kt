@@ -78,6 +78,49 @@ data class SubtitleAutoSyncUiState(
     val errorMessage: String? = null,
 )
 
+// --- Automatic (audio-based) subtitle sync ---
+// See SubtitleAudioAligner for the algorithm and AudioVoiceActivityProvider for the
+// platform-specific audio decode/VAD step this feeds on. Distinct from SubtitleSyncCue
+// above (which only carries a start time, enough for the existing manual tap-to-sync
+// flow) — alignment needs a full [startMs, endMs) interval per cue to build a proper
+// "subtitles expect speech here" signal to correlate against detected voice activity.
+
+/** A single subtitle cue's active interval, independent of any particular file format. */
+data class SubtitleAlignmentCue(
+    val startMs: Long,
+    val endMs: Long,
+)
+
+/** A single interval where voice activity was detected in the decoded audio track. */
+data class VoiceActivitySample(
+    val startMs: Long,
+    val endMs: Long,
+)
+
+/**
+ * Result of running [SubtitleAudioAligner.align].
+ *
+ * [confidence] is the winning offset's correlation score normalized against the best
+ * possible score for this cue set (1.0 = every cue's active window perfectly overlaps
+ * detected speech; near 0 = the match is no better than chance). Callers should treat a
+ * low confidence as "couldn't find a clear sync point" rather than trusting [offsetMs]
+ * blindly — see SUBTITLE_AUTO_SYNC_MIN_CONFIDENCE.
+ */
+data class SubtitleAutoAlignmentResult(
+    val offsetMs: Int,
+    val confidence: Double,
+)
+
+const val SUBTITLE_AUTO_SYNC_MIN_CONFIDENCE = 0.35
+
+/** UI state for the fully-automatic (no tap-to-sync) flow — separate from
+ * [SubtitleAutoSyncUiState], which belongs to the existing manual capture-a-line flow. */
+data class SubtitleAutomaticSyncUiState(
+    val isRunning: Boolean = false,
+    val lastResult: SubtitleAutoAlignmentResult? = null,
+    val errorMessage: String? = null,
+)
+
 val SubtitleColorSwatches = listOf(
     Color.White,
     Color(0xFFFFD700),
