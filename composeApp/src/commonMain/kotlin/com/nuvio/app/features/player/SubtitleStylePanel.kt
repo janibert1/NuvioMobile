@@ -36,6 +36,9 @@ import com.nuvio.app.core.ui.nuvio
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_action_off
 import nuvio.composeapp.generated.resources.compose_action_on
+import nuvio.composeapp.generated.resources.compose_player_auto_detect_sync
+import nuvio.composeapp.generated.resources.compose_player_auto_detect_synced
+import nuvio.composeapp.generated.resources.compose_player_auto_detect_syncing
 import nuvio.composeapp.generated.resources.compose_player_auto_sync
 import nuvio.composeapp.generated.resources.compose_player_bold
 import nuvio.composeapp.generated.resources.compose_player_bottom_offset
@@ -64,6 +67,7 @@ fun SubtitleStylePanel(
     subtitleDelayMs: Int,
     selectedAddonSubtitle: AddonSubtitle?,
     subtitleAutoSyncState: SubtitleAutoSyncUiState,
+    subtitleAutomaticSyncState: SubtitleAutomaticSyncUiState,
     isCompact: Boolean,
     showHeader: Boolean = true,
     onStyleChanged: (SubtitleStyleState) -> Unit,
@@ -72,6 +76,7 @@ fun SubtitleStylePanel(
     onAutoSyncCapture: () -> Unit,
     onAutoSyncCueSelected: (SubtitleSyncCue) -> Unit,
     onAutoSyncReload: () -> Unit,
+    onAutomaticSync: () -> Unit,
 ) {
     val sectionGap = if (isCompact) 12.dp else 16.dp
 
@@ -186,9 +191,11 @@ fun SubtitleStylePanel(
         SubtitleAutoSyncSection(
             selectedAddonSubtitle = selectedAddonSubtitle,
             state = subtitleAutoSyncState,
+            automaticState = subtitleAutomaticSyncState,
             onCapture = onAutoSyncCapture,
             onCueSelected = onAutoSyncCueSelected,
             onReload = onAutoSyncReload,
+            onAutomaticSync = onAutomaticSync,
         )
 
         SubtitleResetAction(
@@ -336,9 +343,11 @@ private fun SubtitleColorPicker(
 private fun SubtitleAutoSyncSection(
     selectedAddonSubtitle: AddonSubtitle?,
     state: SubtitleAutoSyncUiState,
+    automaticState: SubtitleAutomaticSyncUiState,
     onCapture: () -> Unit,
     onCueSelected: (SubtitleSyncCue) -> Unit,
     onReload: () -> Unit,
+    onAutomaticSync: () -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
     val capturedPositionMs = state.capturedPositionMs
@@ -349,6 +358,42 @@ private fun SubtitleAutoSyncSection(
     }
 
     SubtitleStyleSection(title = stringResource(Res.string.compose_player_auto_sync)) {
+        // Fully automatic: analyzes the audio directly, no manual capture step. Shares
+        // the same selectedAddonSubtitle == null gating as the manual flow below (needs
+        // a real subtitle track loaded to fetch cues from either way).
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SubtitleTextAction(
+                label = stringResource(Res.string.compose_player_auto_detect_sync),
+                enabled = selectedAddonSubtitle != null && !automaticState.isRunning,
+                onClick = onAutomaticSync,
+            )
+        }
+        when {
+            automaticState.isRunning -> {
+                SubtitleHelperText(stringResource(Res.string.compose_player_auto_detect_syncing))
+            }
+
+            automaticState.errorMessage != null -> {
+                Text(
+                    text = automaticState.errorMessage,
+                    color = tokens.colors.danger,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            automaticState.lastResult != null -> {
+                Text(
+                    text = stringResource(
+                        Res.string.compose_player_auto_detect_synced,
+                        formatSubtitleDelay(automaticState.lastResult.offsetMs),
+                    ),
+                    color = tokens.colors.accent,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        // Manual: capture a moment, pick which subtitle line you just heard.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SubtitleTextAction(
                 label = stringResource(Res.string.compose_player_reload),

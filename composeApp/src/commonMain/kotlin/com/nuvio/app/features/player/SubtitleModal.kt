@@ -71,6 +71,7 @@ fun SubtitleModal(
     subtitleDelayMs: Int,
     selectedAddonSubtitle: AddonSubtitle?,
     subtitleAutoSyncState: SubtitleAutoSyncUiState,
+    subtitleAutomaticSyncState: SubtitleAutomaticSyncUiState,
     onBuiltInTrackSelected: (Int) -> Unit,
     onAddonSubtitleSelected: (AddonSubtitle) -> Unit,
     onFetchAddonSubtitles: () -> Unit,
@@ -80,6 +81,7 @@ fun SubtitleModal(
     onAutoSyncCapture: () -> Unit,
     onAutoSyncCueSelected: (SubtitleSyncCue) -> Unit,
     onAutoSyncReload: () -> Unit,
+    onAutomaticSync: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -280,6 +282,7 @@ fun SubtitleModal(
                                     subtitleDelayMs = subtitleDelayMs,
                                     selectedAddonSubtitle = effectiveSelectedAddonSubtitle,
                                     subtitleAutoSyncState = subtitleAutoSyncState,
+                                    subtitleAutomaticSyncState = subtitleAutomaticSyncState,
                                     isCompact = railMaxHeight < 420.dp,
                                     showHeader = false,
                                     onStyleChanged = onStyleChanged,
@@ -288,6 +291,7 @@ fun SubtitleModal(
                                     onAutoSyncCapture = onAutoSyncCapture,
                                     onAutoSyncCueSelected = onAutoSyncCueSelected,
                                     onAutoSyncReload = onAutoSyncReload,
+                                    onAutomaticSync = onAutomaticSync,
                                 )
                             }
                         }

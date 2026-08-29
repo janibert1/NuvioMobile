@@ -34,6 +34,7 @@ internal fun PlayerScreenModalHosts(
     subtitleDelayMs: Int,
     selectedAddonSubtitle: AddonSubtitle?,
     subtitleAutoSyncState: SubtitleAutoSyncUiState,
+    subtitleAutomaticSyncState: SubtitleAutomaticSyncUiState,
     onBuiltInSubtitleTrackSelected: (Int) -> Unit,
     onAddonSubtitleSelected: (AddonSubtitle) -> Unit,
     onFetchAddonSubtitles: () -> Unit,
@@ -43,6 +44,7 @@ internal fun PlayerScreenModalHosts(
     onAutoSyncCapture: () -> Unit,
     onAutoSyncCueSelected: (SubtitleSyncCue) -> Unit,
     onAutoSyncReload: () -> Unit,
+    onAutomaticSync: () -> Unit,
     onSubtitleModalDismissed: () -> Unit,
     showVideoSettingsModal: Boolean,
     playerSettings: PlayerSettingsUiState,
@@ -135,6 +137,7 @@ internal fun PlayerScreenModalHosts(
         subtitleDelayMs = subtitleDelayMs,
         selectedAddonSubtitle = selectedAddonSubtitle,
         subtitleAutoSyncState = subtitleAutoSyncState,
+        subtitleAutomaticSyncState = subtitleAutomaticSyncState,
         onBuiltInTrackSelected = onBuiltInSubtitleTrackSelected,
         onAddonSubtitleSelected = onAddonSubtitleSelected,
         onFetchAddonSubtitles = onFetchAddonSubtitles,
@@ -144,6 +147,7 @@ internal fun PlayerScreenModalHosts(
         onAutoSyncCapture = onAutoSyncCapture,
         onAutoSyncCueSelected = onAutoSyncCueSelected,
         onAutoSyncReload = onAutoSyncReload,
+        onAutomaticSync = onAutomaticSync,
         onDismiss = onSubtitleModalDismissed,
     )
 
