@@ -1,5 +1,7 @@
 package com.nuvio.app.features.player
 
+import com.nuvio.app.core.device.DeviceDisplayCapabilities
+import com.nuvio.app.core.network.NetworkTransportMonitor
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.debrid.DebridSettingsRepository
@@ -114,6 +116,8 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
             .map { it.displayTitle }
             .toSet()
         val debridSettings = DebridSettingsRepository.snapshot()
+        val networkTransport = NetworkTransportMonitor.currentTransport()
+        val deviceMaxResolutionPx = DeviceDisplayCapabilities.maxRenderableResolutionPx()
 
         val timeoutSeconds = settings.streamAutoPlayTimeoutSeconds
         var autoSelectTriggered = false
@@ -152,6 +156,8 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
                 bingeGroupOnly = bingeGroupOnlyManualMode,
                 debridEnabled = debridSettings.canResolvePlayableLinks,
                 activeResolverProviderId = debridSettings.activeResolverProviderId,
+                networkTransport = networkTransport,
+                deviceMaxResolutionPx = deviceMaxResolutionPx,
             )
 
         fun tryBingeGroupOnly(streams: List<StreamItem>): StreamItem? {
@@ -169,6 +175,8 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
                 bingeGroupOnly = true,
                 debridEnabled = debridSettings.canResolvePlayableLinks,
                 activeResolverProviderId = debridSettings.activeResolverProviderId,
+                networkTransport = networkTransport,
+                deviceMaxResolutionPx = deviceMaxResolutionPx,
             )
         }
 

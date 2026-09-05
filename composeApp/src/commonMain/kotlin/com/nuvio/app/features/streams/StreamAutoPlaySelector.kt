@@ -1,8 +1,19 @@
 package com.nuvio.app.features.streams
 
 import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.network.NetworkTransport
+import com.nuvio.app.features.debrid.DebridStreamMetadata
+import com.nuvio.app.features.debrid.DebridStreamPreferences
+import com.nuvio.app.features.debrid.DebridStreamResolution
 
 object StreamAutoPlaySelector {
+
+    /**
+     * Cellular auto-play never reaches for more than this resolution class by
+     * default; WiFi (and any other/unknown transport) is left uncapped here -
+     * see [fitsDeviceResolutionCap] for the separate, always-active hard cap.
+     */
+    private const val CELLULAR_RESOLUTION_CEILING = 720
 
     fun orderAddonStreams(
         groups: List<AddonStreamGroup>,
@@ -45,6 +56,8 @@ object StreamAutoPlaySelector {
         bingeGroupOnly: Boolean = false,
         debridEnabled: Boolean = true,
         activeResolverProviderId: String? = null,
+        networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
+        deviceMaxResolutionPx: Int? = null,
     ): StreamItem? =
         evaluateAutoPlayStream(
             streams = streams,
@@ -59,6 +72,8 @@ object StreamAutoPlaySelector {
             bingeGroupOnly = bingeGroupOnly,
             debridEnabled = debridEnabled,
             activeResolverProviderId = activeResolverProviderId,
+            networkTransport = networkTransport,
+            deviceMaxResolutionPx = deviceMaxResolutionPx,
         ).stream
 
     fun evaluateAutoPlayStream(
@@ -74,6 +89,8 @@ object StreamAutoPlaySelector {
         bingeGroupOnly: Boolean = false,
         debridEnabled: Boolean = true,
         activeResolverProviderId: String? = null,
+        networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
+        deviceMaxResolutionPx: Int? = null,
     ): StreamAutoPlayEvaluation {
         if (streams.isEmpty()) return StreamAutoPlayEvaluation()
 
@@ -129,6 +146,11 @@ object StreamAutoPlaySelector {
         val matchingStreams = when (mode) {
             StreamAutoPlayMode.MANUAL -> emptyList()
             StreamAutoPlayMode.FIRST_STREAM -> candidateStreams
+            StreamAutoPlayMode.NETWORK_QUALITY -> rankByNetworkQuality(
+                candidates = candidateStreams,
+                networkTransport = networkTransport,
+                deviceMaxResolutionPx = deviceMaxResolutionPx,
+            )
             StreamAutoPlayMode.REGEX_MATCH -> {
                 val pattern = regexPattern.trim()
 
@@ -194,6 +216,61 @@ object StreamAutoPlaySelector {
                 it.isPendingDebridAutoPlay(debridEnabled, activeResolverProviderId)
             },
         )
+    }
+
+    /**
+     * Orders [candidates] for NETWORK_QUALITY auto-play: streams above the
+     * device's own screen resolution are excluded outright (a hard cap - no
+     * fallback ever crosses it), then among what remains, streams that fit the
+     * current network transport's resolution budget are preferred, ranked
+     * best-quality-first; if none fit the budget, the closest-to-budget
+     * (smallest) remaining stream is used instead so a candidate is still
+     * always produced. Ties preserve the incoming (addon-priority) order.
+     */
+    private fun rankByNetworkQuality(
+        candidates: List<StreamItem>,
+        networkTransport: NetworkTransport,
+        deviceMaxResolutionPx: Int?,
+    ): List<StreamItem> {
+        val withinDeviceCap = candidates.filter { stream ->
+            fitsDeviceResolutionCap(stream.autoPlayResolutionValue(), deviceMaxResolutionPx)
+        }
+        if (withinDeviceCap.isEmpty()) return emptyList()
+
+        val networkCeiling = when (networkTransport) {
+            NetworkTransport.CELLULAR -> CELLULAR_RESOLUTION_CEILING
+            NetworkTransport.WIFI, NetworkTransport.OTHER, NetworkTransport.UNKNOWN -> Int.MAX_VALUE
+        }
+
+        val (withinBudget, overBudget) = withinDeviceCap.partition { stream ->
+            stream.autoPlayResolutionValue() <= networkCeiling
+        }
+        val orderedWithinBudget = withinBudget.sortedByDescending { it.autoPlayResolutionValue() }
+        val orderedOverBudget = overBudget.sortedBy { it.autoPlayResolutionValue() }
+        return orderedWithinBudget + orderedOverBudget
+    }
+
+    private fun StreamItem.autoPlayResolutionValue(): Int =
+        DebridStreamMetadata.facts(this, DebridStreamPreferences()).resolution.value
+
+    /**
+     * Whether a stream of this resolution class is worth rendering on a screen
+     * whose longer edge is [deviceMaxResolutionPx] physical pixels. Unknown
+     * resolutions (0) and an undetermined device size always pass - this cap
+     * only ever excludes a *confidently known* over-sized stream.
+     */
+    private fun fitsDeviceResolutionCap(resolutionValue: Int, deviceMaxResolutionPx: Int?): Boolean {
+        if (deviceMaxResolutionPx == null || resolutionValue <= 0) return true
+        val requiredLongEdgePx = when {
+            resolutionValue >= DebridStreamResolution.P2160.value -> 3840
+            resolutionValue >= DebridStreamResolution.P1440.value -> 2560
+            resolutionValue >= DebridStreamResolution.P1080.value -> 1920
+            resolutionValue >= DebridStreamResolution.P720.value -> 1280
+            resolutionValue >= DebridStreamResolution.P576.value -> 1024
+            resolutionValue >= DebridStreamResolution.P480.value -> 854
+            else -> 640
+        }
+        return requiredLongEdgePx <= deviceMaxResolutionPx
     }
 
     private fun StreamItem.isAutoPlayable(

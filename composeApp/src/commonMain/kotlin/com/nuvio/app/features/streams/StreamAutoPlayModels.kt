@@ -3,6 +3,7 @@ package com.nuvio.app.features.streams
 enum class StreamAutoPlayMode {
     MANUAL,
     FIRST_STREAM,
+    NETWORK_QUALITY,
     REGEX_MATCH,
 }
 

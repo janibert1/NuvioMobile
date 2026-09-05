@@ -2,6 +2,8 @@ package com.nuvio.app.features.streams
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.device.DeviceDisplayCapabilities
+import com.nuvio.app.core.network.NetworkTransportMonitor
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.buildAddonResourceUrl
 import com.nuvio.app.features.addons.enabledAddons
@@ -104,6 +106,10 @@ object StreamsRepository {
         val playerSettings = PlayerSettingsRepository.uiState.value
         val debridSettings = DebridSettingsRepository.snapshot()
         val streamBadgeRules = StreamBadgeSettingsRepository.snapshot()
+        // Sampled once per load so every auto-play evaluation below (including ones inside
+        // nested launches further down) sees a single, consistent snapshot of "now".
+        val autoPlayNetworkTransport = NetworkTransportMonitor.currentTransport()
+        val autoPlayDeviceMaxResolutionPx = DeviceDisplayCapabilities.maxRenderableResolutionPx()
         val autoPlayMode = playerSettings.streamAutoPlayMode
         val isAutoPlayEnabled = !manualSelection && autoPlayMode != StreamAutoPlayMode.MANUAL &&
             !(autoPlayMode == StreamAutoPlayMode.REGEX_MATCH &&
@@ -323,6 +329,8 @@ object StreamsRepository {
                                 bingeGroupOnly = true,
                                 debridEnabled = debridSettings.canResolvePlayableLinks,
                                 activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                networkTransport = autoPlayNetworkTransport,
+                                deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                             )
                             if (earlyMatch != null) {
                                 autoSelectTriggered = true
@@ -365,6 +373,8 @@ object StreamsRepository {
                                         bingeGroupOnly = false,
                                         debridEnabled = debridSettings.canResolvePlayableLinks,
                                         activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                        networkTransport = autoPlayNetworkTransport,
+                                        deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                                     )
                                     _uiState.update { it.copy(autoPlayStream = selected) }
                                 }
@@ -402,6 +412,8 @@ object StreamsRepository {
                                     bingeGroupOnly = false,
                                     debridEnabled = debridSettings.canResolvePlayableLinks,
                                     activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                    networkTransport = autoPlayNetworkTransport,
+                                    deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                                 )
                                 if (evaluation.stream != null || !evaluation.hasPendingDebridCandidate) {
                                     autoSelectTriggered = true
@@ -589,6 +601,8 @@ object StreamsRepository {
                             bingeGroupOnly = !timeoutElapsed,
                             debridEnabled = debridSettings.canResolvePlayableLinks,
                             activeResolverProviderId = debridSettings.activeResolverProviderId,
+                            networkTransport = autoPlayNetworkTransport,
+                            deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                         )
                         if (earlyMatch != null) {
                             autoSelectTriggered = true
@@ -637,6 +651,8 @@ object StreamsRepository {
                                 bingeGroupOnly = !timeoutElapsed,
                                 debridEnabled = debridSettings.canResolvePlayableLinks,
                                 activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                networkTransport = autoPlayNetworkTransport,
+                                deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                             )
                             if (earlyMatch != null) {
                                 autoSelectTriggered = true
@@ -665,6 +681,8 @@ object StreamsRepository {
                                 bingeGroupOnly = false,
                                 debridEnabled = debridSettings.canResolvePlayableLinks,
                                 activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                networkTransport = autoPlayNetworkTransport,
+                                deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                             )
                             if (selected != null) {
                                 autoSelectTriggered = true
@@ -685,6 +703,8 @@ object StreamsRepository {
                                 bingeGroupOnly = true,
                                 debridEnabled = debridSettings.canResolvePlayableLinks,
                                 activeResolverProviderId = debridSettings.activeResolverProviderId,
+                                networkTransport = autoPlayNetworkTransport,
+                                deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                             )
                             if (earlyMatch != null) {
                                 autoSelectTriggered = true
@@ -712,6 +732,8 @@ object StreamsRepository {
                     bingeGroupOnly = false,
                     debridEnabled = debridSettings.canResolvePlayableLinks,
                     activeResolverProviderId = debridSettings.activeResolverProviderId,
+                    networkTransport = autoPlayNetworkTransport,
+                    deviceMaxResolutionPx = autoPlayDeviceMaxResolutionPx,
                 )
                 _uiState.update {
                     it.copy(

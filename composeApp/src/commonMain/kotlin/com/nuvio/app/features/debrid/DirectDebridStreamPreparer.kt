@@ -1,6 +1,9 @@
 package com.nuvio.app.features.debrid
 
 import co.touchlab.kermit.Logger
+import com.nuvio.app.core.device.DeviceDisplayCapabilities
+import com.nuvio.app.core.network.NetworkTransport
+import com.nuvio.app.core.network.NetworkTransportMonitor
 import com.nuvio.app.features.player.PlayerSettingsUiState
 import com.nuvio.app.features.streams.AddonStreamGroup
 import com.nuvio.app.features.streams.StreamAutoPlayMode
@@ -34,6 +37,8 @@ object DirectDebridStreamPreparer {
             limit = limit,
             playerSettings = playerSettings,
             installedAddonNames = installedAddonNames,
+            networkTransport = NetworkTransportMonitor.currentTransport(),
+            deviceMaxResolutionPx = DeviceDisplayCapabilities.maxRenderableResolutionPx(),
         )
         for (stream in candidates) {
             DirectDebridPlaybackResolver.cachedPlayableStream(stream, season, episode)?.let { cached ->
@@ -68,6 +73,8 @@ object DirectDebridStreamPreparer {
         limit: Int,
         playerSettings: PlayerSettingsUiState,
         installedAddonNames: Set<String>,
+        networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
+        deviceMaxResolutionPx: Int? = null,
     ): List<StreamItem> {
         if (limit <= 0) return emptyList()
         val candidates = streams
@@ -88,6 +95,8 @@ object DirectDebridStreamPreparer {
             installedAddonNames = installedAddonNames,
             selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
             selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
+            networkTransport = networkTransport,
+            deviceMaxResolutionPx = deviceMaxResolutionPx,
         )
         if (autoPlaySelection?.let { it.isAddonDebridCandidate && (it.isDirectDebridStream || it.isCachedDebridTorrentStream) } == true) {
             candidates.firstOrNull { it.preparationKey() == autoPlaySelection.preparationKey() }

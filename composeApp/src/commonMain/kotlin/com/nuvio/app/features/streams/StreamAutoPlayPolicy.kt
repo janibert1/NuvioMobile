@@ -10,6 +10,10 @@ object StreamAutoPlayPolicy {
         return when (settings.streamAutoPlayMode) {
             StreamAutoPlayMode.MANUAL -> false
             StreamAutoPlayMode.FIRST_STREAM -> true
+            // Always effectively enabled: NETWORK_QUALITY ranks whatever candidates exist
+            // by device-capped, network-appropriate resolution and always resolves to a
+            // sensible fallback, so it needs no separate "is this configured" check.
+            StreamAutoPlayMode.NETWORK_QUALITY -> true
             StreamAutoPlayMode.REGEX_MATCH -> isRegexSelectionConfigured(settings.streamAutoPlayRegex)
         }
     }

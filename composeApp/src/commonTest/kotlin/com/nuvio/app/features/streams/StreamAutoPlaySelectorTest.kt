@@ -1,5 +1,6 @@
 package com.nuvio.app.features.streams
 
+import com.nuvio.app.core.network.NetworkTransport
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -289,6 +290,127 @@ class StreamAutoPlaySelectorTest {
         )
 
         assertEquals(stream, selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY prefers highest resolution within device cap on wifi`() {
+        val p2160 = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+        val p1080 = stream(addonName = "AddonB", url = "https://example.com/1080.mp4", name = "Movie 1080p")
+        val p720 = stream(addonName = "AddonC", url = "https://example.com/720.mp4", name = "Movie 720p")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p720, p1080, p2160),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA", "AddonB", "AddonC"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.WIFI,
+            deviceMaxResolutionPx = 3840,
+        )
+
+        assertEquals(p2160, selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY caps at a cellular-appropriate resolution on cellular`() {
+        val p2160 = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+        val p720 = stream(addonName = "AddonB", url = "https://example.com/720.mp4", name = "Movie 720p")
+        val p480 = stream(addonName = "AddonC", url = "https://example.com/480.mp4", name = "Movie 480p")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p2160, p720, p480),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA", "AddonB", "AddonC"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.CELLULAR,
+            deviceMaxResolutionPx = 3840,
+        )
+
+        assertEquals(p720, selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY still picks a fallback stream on cellular when every option exceeds budget`() {
+        val p2160 = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+        val p1440 = stream(addonName = "AddonB", url = "https://example.com/1440.mp4", name = "Movie 1440p")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p2160, p1440),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA", "AddonB"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.CELLULAR,
+            deviceMaxResolutionPx = 3840,
+        )
+
+        assertEquals(p1440, selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY never selects a stream above the device resolution hard cap`() {
+        val p2160 = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+        val p720 = stream(addonName = "AddonB", url = "https://example.com/720.mp4", name = "Movie 720p")
+
+        // A device whose long edge is 1300px can render 720p (needs 1280px) but not 1080p (needs 1920px).
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p2160, p720),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA", "AddonB"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.WIFI,
+            deviceMaxResolutionPx = 1300,
+        )
+
+        assertEquals(p720, selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY returns nothing when every candidate exceeds the device resolution hard cap`() {
+        val p2160 = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p2160),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.WIFI,
+            deviceMaxResolutionPx = 1300,
+        )
+
+        assertNull(selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY treats an unknown-resolution stream as always fitting the device cap`() {
+        val unknownResolution = stream(addonName = "AddonA", url = "https://example.com/video.mp4", name = "Movie")
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(unknownResolution),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.CELLULAR,
+            deviceMaxResolutionPx = 640,
+        )
+
+        assertEquals(unknownResolution, selected)
     }
 
     private fun stream(
