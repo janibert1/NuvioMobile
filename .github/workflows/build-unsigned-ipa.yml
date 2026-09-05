@@ -24,17 +24,17 @@ permissions:
 
 jobs:
   build:
-    # Self-hosted on Jan's own Mac Mini (registered 2026-08-23) instead of
-    # macos-latest -- eliminates the cold-start cost entirely (Xcode,
-    # Gradle deps, Kotlin/Native toolchain, SPM/MPVKit packages all persist
-    # on disk between runs) rather than needing GitHub Actions caching.
-    # Runs as a per-user LaunchAgent under the `jan` account specifically
-    # (not a system LaunchDaemon) -- confirmed necessary: `mas`/App Store
-    # downloads on this machine only work when jan's session is the active
-    # foreground one (Antoine's own account is also logged in via fast user
-    # switching), so keep this tied to jan's session rather than converting
-    # it to a LaunchDaemon later without re-verifying that still holds.
-    runs-on: [self-hosted, macOS, ARM64]
+    # Reverted 2026-09-05 back to macos-latest (was self-hosted on Jan's
+    # Mac Mini, 53bb267e, 2026-08-23) -- the self-hosted runner's only
+    # real advantage was avoiding cold-start cost (Xcode/Gradle/Kotlin-
+    # Native/SPM toolchain persisting on disk between runs), but the Mac
+    # Mini goes offline/unreachable often enough (sleep, network drops)
+    # that builds/ships were blocked waiting on it. This repo is public,
+    # so GitHub-hosted macOS Actions minutes are free -- no cost tradeoff
+    # to reverting. If the Mac Mini's reliability improves and cold-start
+    # time becomes the bigger pain point again, 53bb267e has the
+    # self-hosted config to restore.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
