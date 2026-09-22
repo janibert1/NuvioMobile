@@ -13,7 +13,19 @@ final class OrientationLockAppDelegate: NSObject, UIApplicationDelegate, UNUserN
         OrientationLockCoordinator.shared.start()
         DownloadsLiveActivityManager.shared.start()
         UNUserNotificationCenter.current().delegate = self
+        PushNotifications.requestAuthorizationAndRegister()
         return true
+    }
+
+    // push-relay (https://push.jdries.nl) registration -- see PushNotifications.swift.
+    // Wired into this class rather than a separate PushAppDelegate since SwiftUI only
+    // allows one @UIApplicationDelegateAdaptor per App, and this one is already taken.
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushNotifications.reportDeviceToken(deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("didFailToRegisterForRemoteNotificationsWithError: \(error)")
     }
 
     func application(
