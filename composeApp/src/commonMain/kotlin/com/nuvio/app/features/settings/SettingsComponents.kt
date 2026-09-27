@@ -520,3 +520,4 @@ internal fun HomescreenCatalogRow(
         }
     }
 }
+

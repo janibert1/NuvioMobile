@@ -5,6 +5,8 @@ import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.auth.isAnonymous
 import com.nuvio.app.core.network.SupabaseProvider
+import com.nuvio.app.core.poster.CustomPosterUrlRepository
+import com.nuvio.app.core.sync.ProfileSettingsSync
 import com.nuvio.app.core.sync.putSyncOriginClientId
 import com.nuvio.app.core.tracking.ensureTrackingProvidersRegistered
 import com.nuvio.app.features.addons.AddonRepository
@@ -24,6 +26,7 @@ import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.search.SearchHistoryRepository
+import com.nuvio.app.features.search.SearchRepository
 import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
 import com.nuvio.app.features.tracking.TrackingProviderRegistry
@@ -148,6 +151,7 @@ object ProfileRepository {
 
     fun selectProfile(profileIndex: Int) {
         activeProfileIndex = profileIndex
+        CustomPosterUrlRepository.onProfileChanged()
         val selectedProfile = _state.value.profiles.find { it.profileIndex == profileIndex }
         _state.value = _state.value.copy(
             activeProfile = selectedProfile,
@@ -174,15 +178,18 @@ object ProfileRepository {
         HomeCatalogSettingsRepository.onProfileChanged()
         HomeRepository.clear()
         MetaScreenSettingsRepository.onProfileChanged()
+        com.nuvio.app.features.shuffle.EpisodeShuffleRepository.onProfileChanged()
         ContinueWatchingPreferencesRepository.onProfileChanged()
         com.nuvio.app.features.watchprogress.ContinueWatchingEnrichmentCache.onProfileChanged()
         EpisodeReleaseNotificationsRepository.onProfileChanged()
         TmdbSettingsRepository.onProfileChanged()
         MdbListSettingsRepository.onProfileChanged()
         SearchHistoryRepository.onProfileChanged()
+        SearchRepository.reset()
         CollectionRepository.onProfileChanged()
         CollectionMobileSettingsRepository.onProfileChanged()
         DownloadsRepository.onProfileChanged()
+        ProfileSettingsSync.onProfileChanged()
     }
 
     suspend fun pushProfiles(profiles: List<ProfilePushPayload>) {
