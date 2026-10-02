@@ -359,6 +359,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
             args.launchId?.let { launchId -> PlayerLaunchStore.update(launchId) { currentLaunch(it) } }
             playerController?.clearNowPlayingInfo()
             P2pStreamingEngine.shutdown()
+            cancelNextEpisodePreload()
             PlayerStreamsRepository.clearAll()
         }
     }
@@ -635,6 +636,15 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
                 } else null,
             )
         } else null
+    }
+
+    LaunchedEffect(playbackSnapshot.isEnded) {
+        if (playbackSnapshot.isEnded && nextEpisodeCardDismissed &&
+            playerSettingsUiState.streamAutoPlayNextEpisodeEnabled &&
+            nextEpisodeInfo?.hasAired == true
+        ) {
+            nextEpisodeCardDismissed = false
+        }
     }
 
     LaunchedEffect(
