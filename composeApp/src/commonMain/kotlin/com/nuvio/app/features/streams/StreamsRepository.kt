@@ -2,6 +2,9 @@ package com.nuvio.app.features.streams
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.device.DeviceDisplayCapabilities
+import com.nuvio.app.core.network.NetworkSpeedProbe
+import com.nuvio.app.core.network.NetworkTransportMonitor
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.buildAddonResourceUrl
 import com.nuvio.app.features.addons.enabledAddons
@@ -251,6 +254,11 @@ object StreamsRepository {
             val debridAvailabilityJobs = mutableListOf<Job>()
             var autoSelectTriggered = false
             var timeoutElapsed = false
+            val currentNetworkTransport = NetworkTransportMonitor.currentTransport()
+            val currentDeviceMaxResolutionPx = DeviceDisplayCapabilities.maxRenderableResolutionPx()
+            val currentMeasuredSpeedMbps = NetworkSpeedProbe.cachedSpeedMbps()
+            scope.launch { NetworkSpeedProbe.getOrMeasureSpeedMbps() }
+
             fun evaluateAutoPlay(bingeGroupOnly: Boolean = false): StreamAutoPlayEvaluation =
                 StreamAutoPlaySelector.evaluateAutoPlayStream(
                     streams = _uiState.value.groups.flatMap { it.streams },
@@ -265,6 +273,9 @@ object StreamsRepository {
                     bingeGroupOnly = bingeGroupOnly,
                     debridEnabled = debridSettings.canResolvePlayableLinks,
                     activeResolverProviderId = debridSettings.activeResolverProviderId,
+                    networkTransport = currentNetworkTransport,
+                    deviceMaxResolutionPx = currentDeviceMaxResolutionPx,
+                    measuredSpeedMbps = currentMeasuredSpeedMbps ?: NetworkSpeedProbe.cachedSpeedMbps(),
                 )
 
             fun settleAutoPlay(evaluation: StreamAutoPlayEvaluation) {

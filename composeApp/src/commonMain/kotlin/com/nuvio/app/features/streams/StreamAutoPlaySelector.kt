@@ -1,8 +1,14 @@
 package com.nuvio.app.features.streams
 
 import com.nuvio.app.core.build.AppFeaturePolicy
+import com.nuvio.app.core.network.NetworkTransport
+import com.nuvio.app.features.debrid.DebridStreamMetadata
+import com.nuvio.app.features.debrid.DebridStreamPreferences
+import com.nuvio.app.features.debrid.DebridStreamResolution
 
 object StreamAutoPlaySelector {
+
+    private const val CELLULAR_RESOLUTION_CEILING = 720
 
     fun orderAddonStreams(
         groups: List<AddonStreamGroup>,
@@ -50,6 +56,9 @@ object StreamAutoPlaySelector {
         bingeGroupOnly: Boolean = false,
         debridEnabled: Boolean = true,
         activeResolverProviderId: String? = null,
+        networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
+        deviceMaxResolutionPx: Int? = null,
+        measuredSpeedMbps: Double? = null,
     ): StreamItem? =
         evaluateAutoPlayStream(
             streams = streams,
@@ -64,6 +73,9 @@ object StreamAutoPlaySelector {
             bingeGroupOnly = bingeGroupOnly,
             debridEnabled = debridEnabled,
             activeResolverProviderId = activeResolverProviderId,
+            networkTransport = networkTransport,
+            deviceMaxResolutionPx = deviceMaxResolutionPx,
+            measuredSpeedMbps = measuredSpeedMbps,
         ).stream
 
     fun evaluateAutoPlayStream(
@@ -79,6 +91,9 @@ object StreamAutoPlaySelector {
         bingeGroupOnly: Boolean = false,
         debridEnabled: Boolean = true,
         activeResolverProviderId: String? = null,
+        networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
+        deviceMaxResolutionPx: Int? = null,
+        measuredSpeedMbps: Double? = null,
     ): StreamAutoPlayEvaluation {
         if (streams.isEmpty()) return StreamAutoPlayEvaluation()
 
@@ -136,6 +151,12 @@ object StreamAutoPlaySelector {
         val matchingStreams = when (mode) {
             StreamAutoPlayMode.MANUAL -> emptyList()
             StreamAutoPlayMode.FIRST_STREAM -> candidateStreams
+            StreamAutoPlayMode.NETWORK_QUALITY -> rankByNetworkQuality(
+                candidateStreams,
+                networkTransport,
+                deviceMaxResolutionPx,
+                measuredSpeedMbps,
+            )
             StreamAutoPlayMode.REGEX_MATCH -> {
                 val pattern = regexPattern.trim()
 
@@ -201,6 +222,77 @@ object StreamAutoPlaySelector {
                 it.isPendingDebridAutoPlay(debridEnabled, activeResolverProviderId)
             },
         )
+    }
+
+    private fun rankByNetworkQuality(
+        candidates: List<StreamItem>,
+        networkTransport: NetworkTransport,
+        deviceMaxResolutionPx: Int?,
+        measuredSpeedMbps: Double?,
+    ): List<StreamItem> {
+        val withinDeviceCap = candidates.filter { stream ->
+            fitsDeviceResolutionCap(stream.autoPlayResolutionValue(), deviceMaxResolutionPx)
+        }
+        if (withinDeviceCap.isEmpty()) return emptyList()
+
+        val networkCeiling = when (networkTransport) {
+            NetworkTransport.CELLULAR -> CELLULAR_RESOLUTION_CEILING
+            NetworkTransport.WIFI, NetworkTransport.OTHER, NetworkTransport.UNKNOWN -> Int.MAX_VALUE
+        }
+
+        val effectiveMaxMbps = measuredSpeedMbps?.times(0.75) // 75% usable bandwidth budget
+
+        val (withinBudget, overBudget) = withinDeviceCap.partition { stream ->
+            val fitsNetwork = stream.autoPlayResolutionValue() <= networkCeiling
+            val fitsBitrate = if (effectiveMaxMbps != null) {
+                val streamBitrate = streamEstimatedBitrateMbps(stream)
+                streamBitrate == null || streamBitrate <= effectiveMaxMbps
+            } else true
+            fitsNetwork && fitsBitrate
+        }
+        val orderedWithinBudget = withinBudget.sortedByDescending { it.autoPlayResolutionValue() }
+        val orderedOverBudget = overBudget.sortedBy { it.autoPlayResolutionValue() }
+        return orderedWithinBudget + orderedOverBudget
+    }
+
+    private fun StreamItem.autoPlayResolutionValue(): Int =
+        DebridStreamMetadata.facts(this, DebridStreamPreferences()).resolution.value
+
+    private fun streamEstimatedBitrateMbps(stream: StreamItem): Double? {
+        val sizeBytes = stream.clientResolve?.stream?.raw?.size
+            ?: stream.behaviorHints.videoSize
+            ?: stream.debridCacheStatus?.cachedSize
+            ?: parseSizeFromText(stream)
+            ?: return null
+
+        val durationSec = 5400.0 // 90 minutes baseline
+        return (sizeBytes * 8.0) / (durationSec * 1_000_000.0)
+    }
+
+    private fun parseSizeFromText(stream: StreamItem): Long? {
+        val text = listOfNotNull(stream.name, stream.title, stream.description).joinToString(" ")
+        val match = Regex("""(\d+(?:\.\d+)?)\s*(GB|MB|GiB|MiB)""", RegexOption.IGNORE_CASE).find(text) ?: return null
+        val (numStr, unit) = match.destructured
+        val num = numStr.toDoubleOrNull() ?: return null
+        return when (unit.uppercase()) {
+            "GB", "GIB" -> (num * 1024 * 1024 * 1024).toLong()
+            "MB", "MIB" -> (num * 1024 * 1024).toLong()
+            else -> null
+        }
+    }
+
+    private fun fitsDeviceResolutionCap(resolutionValue: Int, deviceMaxResolutionPx: Int?): Boolean {
+        if (deviceMaxResolutionPx == null || resolutionValue <= 0) return true
+        val requiredLongEdgePx = when {
+            resolutionValue >= DebridStreamResolution.P2160.value -> 3840
+            resolutionValue >= DebridStreamResolution.P1440.value -> 2560
+            resolutionValue >= DebridStreamResolution.P1080.value -> 1920
+            resolutionValue >= DebridStreamResolution.P720.value -> 1280
+            resolutionValue >= DebridStreamResolution.P576.value -> 1024
+            resolutionValue >= DebridStreamResolution.P480.value -> 854
+            else -> 640
+        }
+        return requiredLongEdgePx <= deviceMaxResolutionPx
     }
 
     private fun StreamItem.isAutoPlayable(

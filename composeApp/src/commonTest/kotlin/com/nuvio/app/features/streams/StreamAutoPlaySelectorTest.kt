@@ -1,5 +1,6 @@
 package com.nuvio.app.features.streams
 
+import com.nuvio.app.core.network.NetworkTransport
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -289,6 +290,69 @@ class StreamAutoPlaySelectorTest {
         )
 
         assertEquals(stream, selected)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY picks best resolution within device cap and network budget`() {
+        val p2160 = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+        val p1080 = stream(addonName = "AddonA", url = "https://example.com/1080.mp4", name = "Movie 1080p")
+        val p720 = stream(addonName = "AddonA", url = "https://example.com/720.mp4", name = "Movie 720p")
+
+        val onCellular = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p2160, p1080, p720),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.CELLULAR,
+            deviceMaxResolutionPx = 2560,
+        )
+        assertEquals(p720, onCellular)
+
+        val onWifi = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(p2160, p1080, p720),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.WIFI,
+            deviceMaxResolutionPx = 2560,
+        )
+        assertEquals(p1080, onWifi)
+    }
+
+    @Test
+    fun `NETWORK_QUALITY filters stream exceeding bandwidth budget`() {
+        // 50 GB stream over 90 mins requires ~75 Mbps
+        val hugeStream = stream(
+            addonName = "AddonA",
+            url = "https://example.com/huge.mp4",
+            name = "Movie 1080p 50GB",
+        )
+        // 2 GB stream over 90 mins requires ~3 Mbps
+        val smallStream = stream(
+            addonName = "AddonA",
+            url = "https://example.com/small.mp4",
+            name = "Movie 720p 2GB",
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(hugeStream, smallStream),
+            mode = StreamAutoPlayMode.NETWORK_QUALITY,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            networkTransport = NetworkTransport.WIFI,
+            deviceMaxResolutionPx = 1920,
+            measuredSpeedMbps = 10.0, // 10 Mbps connection -> budget 7.5 Mbps
+        )
+        assertEquals(smallStream, selected)
     }
 
     private fun stream(

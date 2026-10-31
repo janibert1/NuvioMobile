@@ -268,6 +268,34 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         fetchAddonSubtitlesForActiveItem()
     }
 
+    LaunchedEffect(
+        addonSubtitles,
+        selectedSubtitleIndex,
+        selectedAddonSubtitleId,
+        playbackSnapshot.isLoading,
+        playerSettingsUiState.preferredSubtitleLanguage,
+    ) {
+        if (selectedSubtitleIndex >= 0 || selectedAddonSubtitleId != null) return@LaunchedEffect
+        if (playbackSnapshot.isLoading) return@LaunchedEffect
+        if (addonSubtitles.isEmpty()) return@LaunchedEffect
+
+        val preferred = normalizeLanguageCode(playerSettingsUiState.preferredSubtitleLanguage)
+        if (preferred == SubtitleLanguageOption.NONE) return@LaunchedEffect
+
+        val targets = preferredSubtitleTargetsForSettings(playerSettingsUiState)
+        if (targets.isEmpty()) return@LaunchedEffect
+
+        val candidate = addonSubtitles.firstOrNull { sub ->
+            targets.any { target -> languageMatchesPreference(sub.language, target) }
+        }
+        if (candidate != null) {
+            selectedAddonSubtitleId = candidate.id
+            useCustomSubtitles = true
+            playerController?.setSubtitleUri(candidate.url)
+            preferredSubtitleSelectionApplied = true
+        }
+    }
+
     LaunchedEffect(playerController, playerControllerSourceUrl, activeSourceUrl, preferredAudioLanguageTargets) {
         if (playerControllerSourceUrl == activeSourceUrl) {
             applyPreferredAudioTrack(preferredAudioLanguageTargets)

@@ -2,11 +2,13 @@ package com.nuvio.app.features.debrid
 
 import kotlinx.serialization.Serializable
 
+const val DEFAULT_TORBOX_API_KEY = "4dc99371-739a-47dc-ab6e-c6e989a7db5a"
+
 data class DebridSettings(
-    val enabled: Boolean = false,
+    val enabled: Boolean = true,
     val cloudLibraryEnabled: Boolean = true,
-    val providerApiKeys: Map<String, String> = emptyMap(),
-    val preferredResolverProviderId: String = "",
+    val providerApiKeys: Map<String, String> = mapOf(DebridProviders.TORBOX_ID to DEFAULT_TORBOX_API_KEY),
+    val preferredResolverProviderId: String = DebridProviders.TORBOX_ID,
     val instantPlaybackPreparationLimit: Int = 0,
     val streamMaxResults: Int = 0,
     val streamSortMode: DebridStreamSortMode = DebridStreamSortMode.DEFAULT,

@@ -20,10 +20,10 @@ object DebridSettingsRepository {
     }
 
     private var hasLoaded = false
-    private var enabled = false
+    private var enabled = true
     private var cloudLibraryEnabled = true
-    private var providerApiKeys = emptyMap<String, String>()
-    private var preferredResolverProviderId = ""
+    private var providerApiKeys = mapOf(DebridProviders.TORBOX_ID to DEFAULT_TORBOX_API_KEY)
+    private var preferredResolverProviderId = DebridProviders.TORBOX_ID
     private var instantPlaybackPreparationLimit = 0
     private var streamMaxResults = 0
     private var streamSortMode = DebridStreamSortMode.DEFAULT
@@ -274,7 +274,7 @@ object DebridSettingsRepository {
 
     private fun loadFromDisk() {
         hasLoaded = true
-        providerApiKeys = DebridProviders.all()
+        val diskApiKeys = DebridProviders.all()
             .mapNotNull { provider ->
                 DebridSettingsStorage.loadProviderApiKey(provider.id)
                     ?.trim()
@@ -282,12 +282,18 @@ object DebridSettingsRepository {
                     ?.let { apiKey -> provider.id to apiKey }
             }
             .toMap()
+        providerApiKeys = if (diskApiKeys.isEmpty() && DebridSettingsStorage.loadTorboxApiKey() == null) {
+            mapOf(DebridProviders.TORBOX_ID to DEFAULT_TORBOX_API_KEY)
+        } else {
+            diskApiKeys
+        }
         preferredResolverProviderId = DebridSettingsStorage.loadPreferredResolverProviderId()
             ?.let(DebridProviders::byId)
             ?.id
             .orEmpty()
+            .ifBlank { if (providerApiKeys.containsKey(DebridProviders.TORBOX_ID)) DebridProviders.TORBOX_ID else "" }
         normalizePreferredResolverProviderId(save = true)
-        enabled = (DebridSettingsStorage.loadEnabled() ?: false) && hasResolverProvider()
+        enabled = (DebridSettingsStorage.loadEnabled() ?: true) && hasResolverProvider()
         cloudLibraryEnabled = DebridSettingsStorage.loadCloudLibraryEnabled() ?: true
         instantPlaybackPreparationLimit = normalizeDebridInstantPlaybackPreparationLimit(
             DebridSettingsStorage.loadInstantPlaybackPreparationLimit() ?: 0,
