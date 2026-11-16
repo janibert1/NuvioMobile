@@ -8,7 +8,7 @@ import com.nuvio.app.features.debrid.DebridStreamResolution
 
 object StreamAutoPlaySelector {
 
-    private const val CELLULAR_RESOLUTION_CEILING = 720
+    private const val CELLULAR_RESOLUTION_CEILING = 1080
 
     fun orderAddonStreams(
         groups: List<AddonStreamGroup>,

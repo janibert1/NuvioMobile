@@ -71,7 +71,7 @@ data class PlayerSettingsUiState(
     val vodCacheEnabled: Boolean = false,
     val vodCacheSizeMode: VodCacheSizeMode = VodCacheSizeMode.AUTO,
     val vodCacheSizeMb: Int = VodCacheSizing.DEFAULT_SIZE_MB,
-    val streamAutoPlayMode: StreamAutoPlayMode = StreamAutoPlayMode.MANUAL,
+    val streamAutoPlayMode: StreamAutoPlayMode = StreamAutoPlayMode.NETWORK_QUALITY,
     val streamAutoPlaySource: StreamAutoPlaySource = StreamAutoPlaySource.ALL_SOURCES,
     val streamAutoPlaySelectedAddons: Set<String> = emptySet(),
     val streamAutoPlaySelectedPlugins: Set<String> = emptySet(),
@@ -153,7 +153,7 @@ object PlayerSettingsRepository {
     private var vodCacheEnabled = false
     private var vodCacheSizeMode = VodCacheSizeMode.AUTO
     private var vodCacheSizeMb = VodCacheSizing.DEFAULT_SIZE_MB
-    private var streamAutoPlayMode = StreamAutoPlayMode.MANUAL
+    private var streamAutoPlayMode = StreamAutoPlayMode.NETWORK_QUALITY
     private var streamAutoPlaySource = StreamAutoPlaySource.ALL_SOURCES
     private var streamAutoPlaySelectedAddons: Set<String> = emptySet()
     private var streamAutoPlaySelectedPlugins: Set<String> = emptySet()
@@ -241,7 +241,7 @@ object PlayerSettingsRepository {
         vodCacheSizeMode = VodCacheSizeMode.AUTO
         vodCacheSizeMb = VodCacheSizing.DEFAULT_SIZE_MB
         applyExoPlayerNativeMemory(false)
-        streamAutoPlayMode = StreamAutoPlayMode.MANUAL
+        streamAutoPlayMode = StreamAutoPlayMode.NETWORK_QUALITY
         streamAutoPlaySource = StreamAutoPlaySource.ALL_SOURCES
         streamAutoPlaySelectedAddons = emptySet()
         streamAutoPlaySelectedPlugins = emptySet()
@@ -369,7 +369,7 @@ object PlayerSettingsRepository {
             ?: PlaybackBufferSettings.DEFAULT_TARGET_BUFFER_MB
         streamAutoPlayMode = PlayerSettingsStorage.loadStreamAutoPlayMode()
             ?.let { runCatching { StreamAutoPlayMode.valueOf(it) }.getOrNull() }
-            ?: StreamAutoPlayMode.MANUAL
+            ?: StreamAutoPlayMode.NETWORK_QUALITY
         streamAutoPlaySource = PlayerSettingsStorage.loadStreamAutoPlaySource()
             ?.let { runCatching { StreamAutoPlaySource.valueOf(it) }.getOrNull() }
             ?: StreamAutoPlaySource.ALL_SOURCES

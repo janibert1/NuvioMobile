@@ -309,7 +309,7 @@ class StreamAutoPlaySelectorTest {
             networkTransport = NetworkTransport.CELLULAR,
             deviceMaxResolutionPx = 2560,
         )
-        assertEquals(p720, onCellular)
+        assertEquals(p1080, onCellular)
 
         val onWifi = StreamAutoPlaySelector.selectAutoPlayStream(
             streams = listOf(p2160, p1080, p720),
