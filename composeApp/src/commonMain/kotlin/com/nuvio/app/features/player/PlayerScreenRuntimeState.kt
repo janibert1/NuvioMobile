@@ -97,7 +97,7 @@ internal class PlayerScreenRuntime(
     var controlsVisible by mutableStateOf(false)
     var showRemainingTime by mutableStateOf(false)
     var playerControlsLocked by mutableStateOf(false)
-    var activeSourceUrl by mutableStateOf(sourceUrl)
+    var activeSourceUrl by mutableStateOf(transcodeStartUrl(sourceUrl))
     var activeSourceAudioUrl by mutableStateOf(sourceAudioUrl)
     var activeSourceHeaders by mutableStateOf(sanitizePlaybackHeaders(sourceHeaders))
     var activeSourceResponseHeaders by mutableStateOf(sanitizePlaybackResponseHeaders(sourceResponseHeaders))
@@ -214,6 +214,9 @@ internal class PlayerScreenRuntime(
     var hasScannedTextTracksOnce by mutableStateOf(false)
     var autoFetchedAddonSubtitlesForKey by mutableStateOf<String?>(null)
     var trackPreferenceRestoreApplied by mutableStateOf(false)
+    var transcodeManualTier by mutableStateOf<com.nuvio.app.core.transcode.TranscodeTier?>(null)
+    var transcodeController: com.nuvio.app.core.transcode.AdaptiveQualityController? = null
+    var transcodeControllerKey: String? = null
     var subtitleDelayMs by mutableStateOf(0)
     var subtitleAutoSyncState by mutableStateOf(SubtitleAutoSyncUiState())
 

@@ -325,6 +325,13 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             } else {
                 null
             },
+            qualityMenu = transcodeQualityLabel?.let { label ->
+                PlayerQualityMenu(
+                    label = label,
+                    manualTier = transcodeManualTier,
+                    onSelect = { tier -> selectTranscodeQuality(tier) },
+                )
+            },
             onSourcesClick = if (activeVideoId != null) { { openSourcesPanel() } } else null,
             onEpisodesClick = if (isSeries) { { openEpisodesPanel() } } else null,
             onOpenInExternalPlayer = args.onOpenInExternalPlayer
