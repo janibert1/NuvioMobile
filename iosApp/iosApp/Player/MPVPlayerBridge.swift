@@ -512,6 +512,10 @@ final class MPVPlayerViewController: UIViewController {
         checkError(mpv_set_option_string(mpv, "tone-mapping", "auto"))
         checkError(mpv_set_option_string(mpv, "hdr-compute-peak", "yes"))
 
+        checkError(mpv_set_option_string(mpv, "cache", "yes"))
+        checkError(mpv_set_option_string(mpv, "demuxer-max-bytes", "150MiB"))
+        checkError(mpv_set_option_string(mpv, "demuxer-readahead-secs", "60"))
+
         checkError(mpv_initialize(mpv))
         applyAudioLanguagePreferences(preferredAudioLanguages)
 
