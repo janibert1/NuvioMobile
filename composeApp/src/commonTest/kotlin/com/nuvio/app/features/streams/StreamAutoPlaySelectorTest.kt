@@ -393,4 +393,35 @@ class StreamAutoPlaySelectorTest {
             bingeGroup = bingeGroup,
         ),
     )
+
+    private fun tierStream(kbps: Int) = stream(
+        addonName = "Transcoder",
+        url = "http://h:8889/proxy/transcode/playlist.m3u8?api_password=pw&bitrate=${kbps}k&d=x",
+        name = "1080p $kbps",
+    )
+
+    @Test
+    fun `NETWORK_QUALITY prefers transcode tier matching proxy throughput over direct streams`() {
+        val direct = stream(addonName = "AddonA", url = "https://example.com/2160.mp4", name = "Movie 2160p")
+        val tiers = listOf(10000, 8000, 5000, 3200, 1800, 750).map(::tierStream)
+
+        fun pick(speed: Double?, transport: NetworkTransport = NetworkTransport.WIFI) =
+            StreamAutoPlaySelector.selectAutoPlayStream(
+                streams = listOf(direct) + tiers,
+                mode = StreamAutoPlayMode.NETWORK_QUALITY,
+                regexPattern = "",
+                source = StreamAutoPlaySource.ALL_SOURCES,
+                installedAddonNames = setOf("AddonA", "Transcoder"),
+                selectedAddons = emptySet(),
+                selectedPlugins = emptySet(),
+                networkTransport = transport,
+                transcodeSpeedMbps = speed,
+            )
+
+        assertEquals(tiers[2], pick(10.0))           // 6.5 usable -> 5 Mbps tier
+        assertEquals(tiers[0], pick(60.0))
+        assertEquals(tiers[5], pick(0.9))
+        assertEquals(tiers[2], pick(null))           // unknown speed on wifi -> default Very High
+        assertEquals(tiers[4], pick(null, NetworkTransport.CELLULAR))
+    }
 }

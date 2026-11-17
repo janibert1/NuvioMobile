@@ -5,6 +5,8 @@ import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.device.DeviceDisplayCapabilities
 import com.nuvio.app.core.network.NetworkSpeedProbe
 import com.nuvio.app.core.network.NetworkTransportMonitor
+import com.nuvio.app.core.transcode.TranscodeSpeedProbe
+import com.nuvio.app.core.transcode.TranscodeUrls
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.buildAddonResourceUrl
 import com.nuvio.app.features.addons.enabledAddons
@@ -276,6 +278,7 @@ object StreamsRepository {
                     networkTransport = currentNetworkTransport,
                     deviceMaxResolutionPx = currentDeviceMaxResolutionPx,
                     measuredSpeedMbps = currentMeasuredSpeedMbps ?: NetworkSpeedProbe.cachedSpeedMbps(),
+                    transcodeSpeedMbps = TranscodeSpeedProbe.cachedSpeedMbps(),
                 )
 
             fun settleAutoPlay(evaluation: StreamAutoPlayEvaluation) {
@@ -298,8 +301,20 @@ object StreamsRepository {
                 }
             }
 
+            var transcodeProbeStarted = false
             fun updateAutoPlayAfterStreamsChanged() {
                 if (!isDirectAutoPlayFlow || autoSelectTriggered) return
+
+                if (!transcodeProbeStarted) {
+                    val transcodeUrl = _uiState.value.groups.asSequence()
+                        .flatMap { it.streams.asSequence() }
+                        .mapNotNull { it.playableDirectUrl }
+                        .firstOrNull(TranscodeUrls::isTranscode)
+                    if (transcodeUrl != null) {
+                        transcodeProbeStarted = true
+                        scope.launch { TranscodeSpeedProbe.measureStartup(transcodeUrl) }
+                    }
+                }
 
                 val earlyEvaluation = when {
                     timeoutElapsed -> evaluateAutoPlay()

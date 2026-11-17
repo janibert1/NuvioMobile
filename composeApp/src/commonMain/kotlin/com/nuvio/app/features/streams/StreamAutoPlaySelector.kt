@@ -2,6 +2,8 @@ package com.nuvio.app.features.streams
 
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.network.NetworkTransport
+import com.nuvio.app.core.transcode.TranscodeLadder
+import com.nuvio.app.core.transcode.TranscodeUrls
 import com.nuvio.app.features.debrid.DebridStreamMetadata
 import com.nuvio.app.features.debrid.DebridStreamPreferences
 import com.nuvio.app.features.debrid.DebridStreamResolution
@@ -59,6 +61,7 @@ object StreamAutoPlaySelector {
         networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
         deviceMaxResolutionPx: Int? = null,
         measuredSpeedMbps: Double? = null,
+        transcodeSpeedMbps: Double? = null,
     ): StreamItem? =
         evaluateAutoPlayStream(
             streams = streams,
@@ -76,6 +79,7 @@ object StreamAutoPlaySelector {
             networkTransport = networkTransport,
             deviceMaxResolutionPx = deviceMaxResolutionPx,
             measuredSpeedMbps = measuredSpeedMbps,
+            transcodeSpeedMbps = transcodeSpeedMbps,
         ).stream
 
     fun evaluateAutoPlayStream(
@@ -94,6 +98,7 @@ object StreamAutoPlaySelector {
         networkTransport: NetworkTransport = NetworkTransport.UNKNOWN,
         deviceMaxResolutionPx: Int? = null,
         measuredSpeedMbps: Double? = null,
+        transcodeSpeedMbps: Double? = null,
     ): StreamAutoPlayEvaluation {
         if (streams.isEmpty()) return StreamAutoPlayEvaluation()
 
@@ -156,6 +161,7 @@ object StreamAutoPlaySelector {
                 networkTransport,
                 deviceMaxResolutionPx,
                 measuredSpeedMbps,
+                transcodeSpeedMbps,
             )
             StreamAutoPlayMode.REGEX_MATCH -> {
                 val pattern = regexPattern.trim()
@@ -229,7 +235,14 @@ object StreamAutoPlaySelector {
         networkTransport: NetworkTransport,
         deviceMaxResolutionPx: Int?,
         measuredSpeedMbps: Double?,
+        transcodeSpeedMbps: Double?,
     ): List<StreamItem> {
+        val transcodeFirst = rankTranscodeStreams(candidates, networkTransport, transcodeSpeedMbps)
+        if (transcodeFirst.isNotEmpty()) {
+            return transcodeFirst + rankByNetworkQuality(
+                candidates - transcodeFirst.toSet(), networkTransport, deviceMaxResolutionPx, measuredSpeedMbps, null,
+            )
+        }
         val withinDeviceCap = candidates.filter { stream ->
             fitsDeviceResolutionCap(stream.autoPlayResolutionValue(), deviceMaxResolutionPx)
         }
@@ -253,6 +266,32 @@ object StreamAutoPlaySelector {
         val orderedWithinBudget = withinBudget.sortedByDescending { it.autoPlayResolutionValue() }
         val orderedOverBudget = overBudget.sortedBy { it.autoPlayResolutionValue() }
         return orderedWithinBudget + orderedOverBudget
+    }
+
+    /**
+     * Streams from the transcode proxy go first: the tier whose bitrate fits the measured proxy
+     * throughput (with headroom), then the remaining tiers closest-first. Playback then adapts in-player.
+     */
+    internal fun rankTranscodeStreams(
+        candidates: List<StreamItem>,
+        networkTransport: NetworkTransport,
+        transcodeSpeedMbps: Double?,
+    ): List<StreamItem> {
+        val tiered = candidates.mapNotNull { stream ->
+            val tier = stream.playableDirectUrl?.let(TranscodeUrls::tierOf) ?: return@mapNotNull null
+            stream to TranscodeLadder.indexOf(tier)
+        }
+        if (tiered.isEmpty()) return emptyList()
+        val target = when {
+            transcodeSpeedMbps != null -> TranscodeLadder.selectTier(transcodeSpeedMbps)
+            networkTransport == NetworkTransport.CELLULAR -> TranscodeLadder.cellularStartTier
+            else -> TranscodeLadder.defaultStartTier
+        }
+        val targetIndex = TranscodeLadder.indexOf(target)
+        // Fitting tiers (<= target) best-first, then higher tiers lowest-first as a last resort. Stable by list order.
+        return tiered
+            .sortedWith(compareBy({ if (it.second <= targetIndex) 0 else 1 }, { if (it.second <= targetIndex) -it.second else it.second }))
+            .map { it.first }
     }
 
     private fun StreamItem.autoPlayResolutionValue(): Int =
