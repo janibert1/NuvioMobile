@@ -29,15 +29,13 @@ object TranscodeLadder {
         TranscodeTier("Balanced", 1800),
         TranscodeTier("High", 3200),
         TranscodeTier("Very High", 5000),
-        TranscodeTier("Ultra", 8000),
-        TranscodeTier("Max", 10000),
     )
 
     /** Fraction of measured throughput the stream may consume (30-40% headroom). */
     const val STARTUP_BUDGET = 0.65
 
     /** Tier used when nothing has been measured yet. */
-    val defaultStartTier: TranscodeTier get() = tiers[3]
+    val defaultStartTier: TranscodeTier get() = tiers[2]
     val cellularStartTier: TranscodeTier get() = tiers[1]
 
     fun tierForKbps(kbps: Int): TranscodeTier? = tiers.firstOrNull { it.videoKbps == kbps }
@@ -47,6 +45,14 @@ object TranscodeLadder {
     fun lower(tier: TranscodeTier): TranscodeTier? = tiers.getOrNull(indexOf(tier) - 1)
 
     fun higher(tier: TranscodeTier): TranscodeTier? = tiers.getOrNull(indexOf(tier) + 1)
+
+    /** The CPU-encoding proxy cannot start segments fast enough above this, so startup never begins higher. */
+    const val STARTUP_MAX_INDEX = 2 // High (3.2 Mbps); adaptation may climb to the top later
+
+    fun startupTier(speedMbps: Double?): TranscodeTier {
+        val picked = selectTier(speedMbps)
+        return if (indexOf(picked) > STARTUP_MAX_INDEX) tiers[STARTUP_MAX_INDEX] else picked
+    }
 
     /** Highest tier whose total bitrate fits inside [budget] of [speedMbps]; lowest tier if none do. */
     fun selectTier(speedMbps: Double?, budget: Double = STARTUP_BUDGET): TranscodeTier {

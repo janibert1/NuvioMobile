@@ -283,7 +283,7 @@ object StreamAutoPlaySelector {
         }
         if (tiered.isEmpty()) return emptyList()
         val target = when {
-            transcodeSpeedMbps != null -> TranscodeLadder.selectTier(transcodeSpeedMbps)
+            transcodeSpeedMbps != null -> TranscodeLadder.startupTier(transcodeSpeedMbps)
             networkTransport == NetworkTransport.CELLULAR -> TranscodeLadder.cellularStartTier
             else -> TranscodeLadder.defaultStartTier
         }

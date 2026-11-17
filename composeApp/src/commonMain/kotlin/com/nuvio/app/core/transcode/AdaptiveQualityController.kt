@@ -34,6 +34,9 @@ class AdaptiveQualityController(
     private var lastSwitchAtMs = startedAtMs
     private var lastSwitchWasDown = false
     private var startedAt = startedAtMs
+    /** Warmup is measured from the first frame that actually plays, not from the load request (cold segments can take 15+ s). */
+    private var firstFrameAt: Long? = null
+    private var warmupMs = WARMUP_MS
     private var lowBufferStreak = 0
     private var upStreak = 0
     private var lastProbeMbps: Double? = null
@@ -44,6 +47,8 @@ class AdaptiveQualityController(
     fun reset(tier: TranscodeTier, nowMs: Long) {
         currentTier = tier
         startedAt = nowMs
+        firstFrameAt = null
+        warmupMs = WARMUP_MS
         lastSwitchAtMs = nowMs
         lowBufferStreak = 0
         upStreak = 0
@@ -52,7 +57,12 @@ class AdaptiveQualityController(
 
     fun onSample(s: Sample): TranscodeTier? {
         s.probeMbps?.let { lastProbeMbps = it }
-        if (s.nowMs - startedAt < WARMUP_MS) return null
+        val ff = firstFrameAt
+        if (ff == null) {
+            if (s.isPlaying && !s.isLoading) firstFrameAt = s.nowMs
+            return null
+        }
+        if (s.nowMs - ff < warmupMs) return null
         if (!s.isPlaying && !s.isLoading) return null // paused: neither drain nor headroom information
 
         val buffer = s.bufferAheadMs
@@ -100,7 +110,9 @@ class AdaptiveQualityController(
         lastSwitchAtMs = nowMs
         lastSwitchWasDown = down
         // The reload resets the player's buffer; give it a fresh warmup before judging again.
-        startedAt = nowMs - WARMUP_MS + POST_SWITCH_WARMUP_MS
+        startedAt = nowMs
+        firstFrameAt = null
+        warmupMs = POST_SWITCH_WARMUP_MS
         lowBufferStreak = 0
         upStreak = 0
         return tier

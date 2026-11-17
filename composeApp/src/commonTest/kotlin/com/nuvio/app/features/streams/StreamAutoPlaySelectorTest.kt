@@ -418,10 +418,10 @@ class StreamAutoPlaySelectorTest {
                 transcodeSpeedMbps = speed,
             )
 
-        assertEquals(tiers[2], pick(10.0))           // 6.5 usable -> 5 Mbps tier
-        assertEquals(tiers[0], pick(60.0))
+        assertEquals(tiers[3], pick(10.0))           // startup never above High (3.2 Mbps)
+        assertEquals(tiers[3], pick(60.0))
         assertEquals(tiers[5], pick(0.9))
-        assertEquals(tiers[2], pick(null))           // unknown speed on wifi -> default Very High
+        assertEquals(tiers[3], pick(null))           // unknown speed on wifi -> default High
         assertEquals(tiers[4], pick(null, NetworkTransport.CELLULAR))
     }
 }

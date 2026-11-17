@@ -26,7 +26,7 @@ internal fun transcodeStartUrl(url: String): String = when {
     !TranscodeUrls.isTranscode(url) -> url
     !isIos -> TranscodeUrls.asMaster(url)
     TranscodeUrls.isMaster(url) ->
-        TranscodeUrls.withTier(url, TranscodeLadder.selectTier(TranscodeSpeedProbe.cachedSpeedMbps(url)))
+        TranscodeUrls.withTier(url, TranscodeLadder.startupTier(TranscodeSpeedProbe.cachedSpeedMbps(url)))
     else -> url
 }
 
@@ -54,7 +54,7 @@ internal fun PlayerScreenRuntime.selectTranscodeQuality(tier: TranscodeTier?) {
         tier != null -> TranscodeUrls.withTier(activeSourceUrl, tier)
         else -> {
             val auto = TranscodeUrls.tierOf(activeSourceUrl)
-                ?: TranscodeLadder.selectTier(TranscodeSpeedProbe.cachedSpeedMbps(activeSourceUrl))
+                ?: TranscodeLadder.startupTier(TranscodeSpeedProbe.cachedSpeedMbps(activeSourceUrl))
             transcodeController = null // fresh warmup + state for the new mode
             if (isIos) TranscodeUrls.withTier(activeSourceUrl, auto) else TranscodeUrls.asMaster(activeSourceUrl)
         }
@@ -89,7 +89,7 @@ internal fun PlayerScreenRuntime.BindAdaptiveQualityEffect() {
             transcodeControllerKey = contentKey
             // Startup: pick the tier for the real phone -> proxy throughput; cheap this early (nothing buffered yet).
             val speed = TranscodeSpeedProbe.cachedSpeedMbps(url) ?: TranscodeSpeedProbe.measureStartup(url)
-            val target = TranscodeLadder.selectTier(speed)
+            val target = TranscodeLadder.startupTier(speed)
             if (speed != null && target.videoKbps != startTier.videoKbps && playbackSnapshot.positionMs < STARTUP_CORRECTION_MAX_POSITION_MS) {
                 controller.reset(target, nowMs())
                 reloadTranscodeSource(TranscodeUrls.withTier(url, target))
